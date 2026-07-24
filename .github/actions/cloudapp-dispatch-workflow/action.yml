@@ -28,6 +28,10 @@ inputs:
     description: 'Target deployment environment'
     required: false
     default: 'dev'
+  plan-only:
+    description: 'Plan without applying (forwarded to the target workflow)'
+    required: false
+    default: 'false'
 
   # Target Repository Defaults
   target-owner:
@@ -118,6 +122,7 @@ runs:
         INPUT_STACK_NAME: ${{ inputs.stack-name }}
         INPUT_BRANCH: ${{ inputs.branch }}
         INPUT_ENV: ${{ inputs.env }}
+        INPUT_PLAN_ONLY: ${{ inputs.plan-only }}
       run: python ${{ github.action_path }}/../../scripts/dispatch_and_wait.py
 
     - name: Post Summary to Caller Workflow

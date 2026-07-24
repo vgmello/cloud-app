@@ -64,6 +64,7 @@ jobs:
           stack-name: ${{ inputs.stack_name }}
           branch: ${{ github.ref_name }}
           env: ${{ inputs.env }}
+          plan-only: ${{ inputs.plan_only }}
 
   setup:
     runs-on: ubuntu-latest
