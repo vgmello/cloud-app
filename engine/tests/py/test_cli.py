@@ -181,3 +181,39 @@ def test_bootstrap_vars_bad_mode_returns_nonzero(capsys):
     ])
     assert rc == 1
     assert "::error::" in capsys.readouterr().out
+
+
+def test_rotate_images_cli_invokes_az_per_image(tmp_path, monkeypatch, capsys):
+    import json as _json
+
+    from cloudapp import cli, runner
+
+    tool = {"name": "orders-api", "apps": {"main": {}}, "functions": {}}
+    (tmp_path / "tool.dev.json").write_text(_json.dumps(tool))
+    (tmp_path / "dev.yml").write_text('naming_prefix: ""\nstate_backend:\n  type: azurerm\n')
+
+    calls = []
+
+    class _R:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd, check=False, capture=False):
+        calls.append(cmd)
+        return _R()
+
+    monkeypatch.setattr(runner, "run", fake_run)
+
+    cli.main([
+        "rotate-images",
+        "--tool-json", str(tmp_path / "tool.dev.json"),
+        "--environment", "dev",
+        "--platform-file", str(tmp_path / "dev.yml"),
+        "--image-tags", _json.dumps({"main/main": "reg/orders-api/main-main:sha1"}),
+        "--resource-group", "rg-x",
+    ])
+
+    assert calls[0][:3] == ["az", "containerapp", "update"]
+    assert "ca-orders-api-dev" in calls[0]
+    assert "reg/orders-api/main-main:sha1" in calls[0]

@@ -18,6 +18,7 @@ from . import (
     manifest,
     registry,
     resolve,
+    rotate,
     runner,
     secrets,
     tfdeploy,
@@ -89,6 +90,14 @@ def cmd_sync_secrets(args):
 def cmd_state_exists(args):
     exists = backend.state_exists(args.platform_file, args.tool_name, args.environment, runner.run)
     gha.write_outputs({"exists": "true" if exists else "false"})
+
+
+def cmd_rotate_images(args):
+    tool = _load_json(args.tool_json)
+    platform = load_yaml(Path(args.platform_file).read_text()) or {}
+    prefix = platform.get("naming_prefix") or ""
+    image_tags = json.loads(args.image_tags or "{}")
+    rotate.rotate(tool, prefix, args.environment, image_tags, args.resource_group, runner.run)
 
 
 def cmd_terraform_deploy(args):
@@ -225,6 +234,14 @@ def main(argv=None):
     p.add_argument("--environment", required=True)
     p.set_defaults(func=cmd_state_exists)
 
+    p = sub.add_parser("rotate-images")
+    p.add_argument("--tool-json", required=True)
+    p.add_argument("--environment", required=True)
+    p.add_argument("--platform-file", required=True)
+    p.add_argument("--image-tags", default="{}")
+    p.add_argument("--resource-group", required=True)
+    p.set_defaults(func=cmd_rotate_images)
+
     p = sub.add_parser("terraform-deploy")
     p.add_argument("--terraform-dir", required=True)
     p.add_argument("--tfvars-file", required=True)
@@ -265,7 +282,7 @@ def main(argv=None):
     try:
         args.func(args)
     except (manifest.ManifestError, resolve.ResolveError, secrets.SyncError,
-            tfdeploy.DeployError, backend.BackendError,
+            tfdeploy.DeployError, backend.BackendError, rotate.RotateError,
             registry.RegistryError, ValueError) as exc:
         gha.error(str(exc))
         return 1
