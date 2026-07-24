@@ -82,3 +82,15 @@ run "custom_module_receives_keyvault_context" {
     error_message = "key_vault_id and key_vault_uri must not be wired to the same value (would mask a swap)"
   }
 }
+
+# Only meaningful when tests/staged-custom-check.sh has staged the sample caller
+# file into ../custom. With an empty custom/ this block still passes (the module
+# plans clean either way) — the real signal is that the staged plan succeeds.
+run "staged_caller_file_plans" {
+  command = plan
+
+  assert {
+    condition     = module.custom.context.location != ""
+    error_message = "custom module must plan with a location in context"
+  }
+}
