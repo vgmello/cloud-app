@@ -269,3 +269,24 @@ def test_terraform_allowed_in_environment_overlay():
         "environments": {"prod": {"terraform": "./terraform-prod"}},
     }
     assert manifest.validate(m) == []
+
+
+def test_normalize_terraform_shorthand_folds_to_object():
+    cfg = manifest.normalize({"name": "orders", "terraform": "./terraform"})
+    assert cfg["terraform"] == {"dir": "./terraform", "providers": []}
+
+
+def test_normalize_terraform_object_defaults_providers():
+    cfg = manifest.normalize({"name": "orders", "terraform": {"dir": "./tf"}})
+    assert cfg["terraform"] == {"dir": "./tf", "providers": []}
+
+
+def test_normalize_terraform_object_keeps_providers():
+    providers = [{"name": "random", "source": "hashicorp/random", "version": "~> 3"}]
+    cfg = manifest.normalize({"name": "orders", "terraform": {"dir": "./tf", "providers": providers}})
+    assert cfg["terraform"] == {"dir": "./tf", "providers": providers}
+
+
+def test_normalize_without_terraform_leaves_key_absent():
+    cfg = manifest.normalize({"name": "orders"})
+    assert "terraform" not in cfg
