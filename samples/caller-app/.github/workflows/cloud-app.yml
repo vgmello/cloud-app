@@ -27,9 +27,7 @@ jobs:
     # identities trust is repo:<this>:environment:<env>.
     environment: ${{ inputs.environment || 'dev' }}
     steps:
-      # Caller checkout: the action reads the manifest and the Dockerfile/context
-      # from this repo.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v4
 
       - uses: vgmello/cloud-app/.github/actions/cloud-app@main
         with:
