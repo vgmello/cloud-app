@@ -15,9 +15,10 @@ Two files are all an app repo needs:
 1. Merge to `main` (or run the workflow manually and pick an environment).
 2. This repo's own `cloud-app.yml` workflow runs the `cloud-app` action as a
    step in its single, environment-gated job. The action dispatches the
-   control repo (`vgmello/cloud-app`) to bootstrap the stack, which triggers
-   the control repo's deploy workflow under **its** identity — this repo
-   never holds deploy-capable credentials.
+   control repo (`vgmello/cloud-app`) to run the bootstrap under the control
+   repo's subscription-scoped identity — creating the resource group and the
+   RG-scoped plan/apply identities federated to this repo. This repo never
+   holds subscription-scoped credentials.
 3. The control repo's stack-lock registry
    (`registries/<env>/orders-api.yml`) authorizes this repo. First deploy
    claims the stack (trust-on-first-use); later callers must be added to
