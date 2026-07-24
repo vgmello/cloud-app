@@ -112,6 +112,9 @@ def cmd_bootstrap_vars(args):
         "environment": args.environment,
         "subscription_id": platform["subscription_id"],
         "location": platform["location"],
+        # Optional: the shared ABAC-enabled ACR id enables the repo-scoped push
+        # grant in the bootstrap stack. Empty when not configured.
+        "acr_id": (platform.get("acr") or {}).get("id", ""),
         "plan_subjects": identity.federation_subjects(
             "plan", args.mode, args.app_repo, args.central_repo, args.environment
         ),

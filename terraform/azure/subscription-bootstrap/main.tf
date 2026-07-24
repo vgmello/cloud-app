@@ -50,6 +50,8 @@ locals {
     storage_blob_data_reader      = "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1"
     storage_blob_data_contributor = "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
     key_vault_reader              = "21090545-7ca7-4776-b22c-e363652d74d2"
+    # ABAC-enabled ACR role: lets the per-tool bootstrap grant repo-scoped push.
+    acr_repository_writer = "2a1e307c-b015-4ebd-883e-5b7698a07328"
   }
   assignable_role_guids = join(", ", [for g in values(local.assignable_roles) : format("'%s'", g)])
 }

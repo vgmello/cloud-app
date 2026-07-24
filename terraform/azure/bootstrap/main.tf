@@ -50,6 +50,32 @@ resource "azurerm_role_assignment" "apply_contributor" {
   principal_id         = azurerm_user_assigned_identity.apply.principal_id
 }
 
+# apply identity: repo-scoped push to the shared ACR (ABAC-enabled registry).
+# The ABAC condition constrains writes to the tool's own repository namespace
+# (`<name>/*`), so the caller can push only its own images. Reads are left
+# unrestricted. Skipped when acr_id is empty.
+resource "azurerm_role_assignment" "apply_acr_push" {
+  count                = var.acr_id == "" ? 0 : 1
+  scope                = var.acr_id
+  role_definition_name = "Container Registry Repository Writer"
+  principal_id         = azurerm_user_assigned_identity.apply.principal_id
+
+  condition_version = "2.0"
+  condition         = <<-COND
+    (
+     (
+      !(ActionMatches{'Microsoft.ContainerRegistry/registries/repositories/content/write'})
+      AND
+      !(ActionMatches{'Microsoft.ContainerRegistry/registries/repositories/metadata/write'})
+     )
+     OR
+     (
+      @Request[Microsoft.ContainerRegistry/registries/repositories:name] StringStartsWithIgnoreCase '${var.name}/'
+     )
+    )
+  COND
+}
+
 resource "azurerm_federated_identity_credential" "plan" {
   count     = length(var.plan_subjects)
   name      = "gha-plan-${count.index}"

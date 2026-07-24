@@ -108,7 +108,7 @@ jobs:
           path: .cloud-app/tool.${{ inputs.env }}.json
 
   build:
-    needs: setup
+    needs: [setup, bootstrap]
     if: ${{ needs.setup.outputs.docker == 'true' && inputs.plan_only == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -139,14 +139,15 @@ jobs:
           FILE=".deploy/environments/$DEPLOY_ENV.yml"
           {
             echo "registry=$(yq '.acr.login_server' "$FILE")"
-            echo "client_id=$(yq '.deploy.client_id' "$FILE")"
             echo "tenant_id=$(yq '.tenant_id' "$FILE")"
             echo "subscription_id=$(yq '.subscription_id' "$FILE")"
           } >> "$GITHUB_OUTPUT"
 
+      # Push under the apply identity, which bootstrap granted repo-scoped ACR
+      # push (Container Registry Repository Writer, ABAC-limited to <name>/*).
       - uses: azure/login@v2
         with:
-          client-id: ${{ steps.platform.outputs.client_id }}
+          client-id: ${{ needs.bootstrap.outputs.apply_client_id }}
           tenant-id: ${{ steps.platform.outputs.tenant_id }}
           subscription-id: ${{ steps.platform.outputs.subscription_id }}
 

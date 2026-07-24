@@ -15,6 +15,7 @@ network:
 acr:
   login_server: acrplatformstaging.azurecr.io
   resource_group: rg-platform-staging
+  id: "" # set to the ABAC-enabled ACR resource id to enable repo-scoped image push
 state_backend:
   type: azurerm
   resource_group: rg-tfstate

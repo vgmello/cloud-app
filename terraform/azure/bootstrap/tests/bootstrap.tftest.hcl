@@ -32,4 +32,25 @@ run "identities_and_scoped_roles" {
     condition     = azurerm_federated_identity_credential.apply[0].subject == "repo:acme/orders:environment:prod"
     error_message = "apply federation subject passthrough"
   }
+  assert {
+    condition     = length(azurerm_role_assignment.apply_acr_push) == 0
+    error_message = "no ACR push grant when acr_id is empty"
+  }
+}
+
+run "acr_push_scoped_to_repo_namespace" {
+  command = plan
+
+  variables {
+    acr_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-platform-prod/providers/Microsoft.ContainerRegistry/registries/acrplatformprod"
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.apply_acr_push[0].role_definition_name == "Container Registry Repository Writer"
+    error_message = "apply identity must get repo Writer on the ACR"
+  }
+  assert {
+    condition     = strcontains(azurerm_role_assignment.apply_acr_push[0].condition, "StringStartsWithIgnoreCase 'orders-api/'")
+    error_message = "ACR push must be ABAC-scoped to the tool repository namespace"
+  }
 }
