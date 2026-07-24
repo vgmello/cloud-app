@@ -18,6 +18,7 @@ run "custom_role_is_exactly_the_seven_capabilities" {
         "Microsoft.Resources/subscriptions/resourceGroups/write",
         "Microsoft.ManagedIdentity/userAssignedIdentities/read",
         "Microsoft.ManagedIdentity/userAssignedIdentities/write",
+        "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/read",
         "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/write",
         "Microsoft.Authorization/roleAssignments/read",
         "Microsoft.Authorization/roleAssignments/write",
@@ -32,8 +33,8 @@ run "custom_role_is_exactly_the_seven_capabilities" {
   }
 
   assert {
-    condition     = length(azurerm_role_definition.bootstrap.permissions[0].actions) == 7
-    error_message = "bootstrap role must contain exactly the seven approved actions"
+    condition     = length(azurerm_role_definition.bootstrap.permissions[0].actions) == 8
+    error_message = "bootstrap role must contain exactly the eight approved actions"
   }
 
   assert {

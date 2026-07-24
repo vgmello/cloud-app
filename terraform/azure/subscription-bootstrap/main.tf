@@ -18,6 +18,7 @@ resource "azurerm_role_definition" "bootstrap" {
       "Microsoft.Resources/subscriptions/resourceGroups/write",
       "Microsoft.ManagedIdentity/userAssignedIdentities/read",
       "Microsoft.ManagedIdentity/userAssignedIdentities/write",
+      "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/read",
       "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/write",
       "Microsoft.Authorization/roleAssignments/read",
       "Microsoft.Authorization/roleAssignments/write",

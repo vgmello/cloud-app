@@ -1,6 +1,8 @@
-resource "azurerm_resource_group" "this" {
-  name     = local.rg_name
-  location = local.platform.location
+# The resource group is owned by the bootstrap stack (it also holds the
+# plan/apply identities). The main stack only consumes it — two Terraform states
+# must never both manage the same RG.
+data "azurerm_resource_group" "this" {
+  name = local.rg_name
 }
 
 module "keyvault" {
@@ -8,7 +10,7 @@ module "keyvault" {
 
   name                        = local.kv_name
   location                    = local.platform.location
-  resource_group_name         = azurerm_resource_group.this.name
+  resource_group_name         = data.azurerm_resource_group.this.name
   tenant_id                   = local.platform.tenant_id
   public_network_access       = local.platform.runner_access == "public-allowlist"
   runner_ip                   = var.runner_ip
@@ -27,7 +29,7 @@ module "database" {
   public_access               = each.value.public_access
   dbs                         = local.db_secret_names[each.key]
   location                    = local.platform.location
-  resource_group_name         = azurerm_resource_group.this.name
+  resource_group_name         = data.azurerm_resource_group.this.name
   keyvault_id                 = module.keyvault.id
   private_endpoints_subnet_id = local.platform.network.subnets.private_endpoints
   private_dns_zone_id         = each.value.type == "postgres" ? local.platform.network.private_dns_zone_ids.postgres : local.platform.network.private_dns_zone_ids.sqlserver
@@ -48,7 +50,7 @@ module "storage" {
 
   name                        = local.st_name
   location                    = local.platform.location
-  resource_group_name         = azurerm_resource_group.this.name
+  resource_group_name         = data.azurerm_resource_group.this.name
   containers                  = try(local.storage.containers, [])
   public_access               = local.storage.public_access
   runner_ip                   = var.runner_ip
@@ -63,7 +65,7 @@ module "container_app" {
 
   name                          = local.ca_names[each.key]
   location                      = local.platform.location
-  resource_group_name           = azurerm_resource_group.this.name
+  resource_group_name           = data.azurerm_resource_group.this.name
   container_apps_environment_id = local.platform.container_apps_environment_id
   app                           = each.value
   image_tags                    = { for k, v in var.image_tags : split("/", k)[1] => v if length(split("/", k)) == 2 && split("/", k)[0] == each.key }
@@ -82,7 +84,7 @@ module "function" {
 
   name                = local.func_names[each.key]
   location            = local.platform.location
-  resource_group_name = azurerm_resource_group.this.name
+  resource_group_name = data.azurerm_resource_group.this.name
   function            = each.value
   image_tag           = try(var.image_tags[each.key], null)
   acr_id              = local.acr_id
@@ -100,6 +102,6 @@ module "static_site" {
 
   name                = local.swa_names[each.key]
   location            = local.platform.location
-  resource_group_name = azurerm_resource_group.this.name
+  resource_group_name = data.azurerm_resource_group.this.name
   site                = each.value
 }
