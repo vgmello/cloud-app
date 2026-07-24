@@ -3,7 +3,7 @@ import pytest
 from cloudapp import manifest
 from conftest import FIXTURES, load_golden, load_manifest
 
-VALID = ["minimal", "full", "multi", "partial"]
+VALID = ["minimal", "full", "multi", "partial", "databases"]
 INVALID = [
     "invalid-missing-name",
     "invalid-legacy-type",
@@ -16,6 +16,7 @@ INVALID = [
     "invalid-image-and-docker",
     "invalid-function-image-docker",
     "invalid-env-number",
+    "invalid-database-and-databases",
 ]
 
 
