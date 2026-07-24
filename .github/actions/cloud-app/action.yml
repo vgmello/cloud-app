@@ -36,10 +36,25 @@ inputs:
   control-ref:
     description: Ref of the control repo to run bootstrap.yml from
     default: main
+  smart_apply:
+    description: >-
+      When true (default), skip the Terraform apply on an apply run whose
+      manifest did not change since the previous commit — the image is rebuilt
+      and rotated directly instead (image rotation is a later phase). Requires
+      the caller to check out with `fetch-depth: 2` so the previous commit is
+      available to diff. Forced off (full apply always runs) for plan-only runs,
+      manual dispatch, first deploys, and when the parent commit is unavailable.
+    default: "true"
 outputs:
   name:
     description: Resolved stack name (manifest name)
     value: ${{ steps.parse.outputs.name }}
+  manifest_changed:
+    description: Whether the manifest changed since the previous commit (true if it could not be determined)
+    value: ${{ steps.detect.outputs.manifest_changed }}
+  applied:
+    description: Whether the Terraform apply/plan step ran (false when smart_apply skipped it)
+    value: ${{ steps.gate.outputs.should_apply }}
   resource_group:
     description: Resource group created by the bootstrap
     value: ${{ steps.bootstrap.outputs.resource_group }}
@@ -62,6 +77,30 @@ runs:
           echo "::error::cloud-app: manifest '$MANIFEST' not found in the workspace. Check out the caller repo before this action — add a step 'uses: actions/checkout@v4' ahead of it (and set the 'manifest:' input if your manifest is not at the repo root)."
           exit 1
         fi
+
+    # Pure git signal: did the manifest change since the previous commit? Used by
+    # smart_apply. "true" whenever it cannot be proven unchanged (new file, no
+    # parent commit / shallow checkout) so the apply is never skipped on doubt.
+    # Needs the caller to check out with fetch-depth >= 2.
+    - name: Detect manifest change
+      id: detect
+      shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        changed=true
+        if ! git rev-parse --verify -q HEAD^ >/dev/null 2>&1; then
+          reason="no parent commit available (shallow checkout? set fetch-depth: 2)"
+        elif ! git cat-file -e "HEAD^:$MANIFEST" 2>/dev/null; then
+          reason="manifest is new in this commit"
+        elif git diff --quiet HEAD^ HEAD -- "$MANIFEST"; then
+          changed=false
+          reason="manifest unchanged since previous commit"
+        else
+          reason="manifest changed since previous commit"
+        fi
+        echo "manifest_changed=$changed" >> "$GITHUB_OUTPUT"
+        echo "cloud-app: manifest_changed=$changed ($reason)"
 
     - name: Install engine deps
       shell: bash
@@ -243,8 +282,41 @@ runs:
         --keyvault-name "${{ steps.platform.outputs.keyvault }}"
         --require-vault
 
+    # Decide whether the Terraform apply runs. Full apply always runs unless
+    # smart_apply is on AND this is a routine apply whose manifest did not
+    # change. Forced on for: plan-only (it is a plan), smart_apply off, manual
+    # dispatch, and first deploy (key vault not yet created).
+    - name: Decide apply
+      id: gate
+      shell: bash
+      env:
+        PLAN_ONLY: ${{ inputs.plan_only }}
+        SMART_APPLY: ${{ inputs.smart_apply }}
+        MANIFEST_CHANGED: ${{ steps.detect.outputs.manifest_changed }}
+        VAULT_EXISTS: ${{ steps.secrets.outputs.vault-exists }}
+        EVENT: ${{ github.event_name }}
+      run: |
+        should_apply=true
+        if [ "$PLAN_ONLY" = "true" ]; then
+          reason="plan-only run"
+        elif [ "$SMART_APPLY" != "true" ]; then
+          reason="smart_apply disabled"
+        elif [ "$EVENT" = "workflow_dispatch" ]; then
+          reason="manual dispatch"
+        elif [ "$VAULT_EXISTS" = "false" ]; then
+          reason="first deploy (key vault not yet created)"
+        elif [ "$MANIFEST_CHANGED" = "true" ]; then
+          reason="manifest changed"
+        else
+          should_apply=false
+          reason="smart_apply: manifest unchanged — image rotation handles the new image"
+        fi
+        echo "should_apply=$should_apply" >> "$GITHUB_OUTPUT"
+        echo "cloud-app: should_apply=$should_apply ($reason)"
+
     - name: Terraform deploy
       id: deploy
+      if: ${{ steps.gate.outputs.should_apply == 'true' }}
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
@@ -266,4 +338,9 @@ runs:
 
     - name: Write summary
       shell: bash
-      run: echo "### ${{ steps.deploy.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
+      run: |
+        if [ "${{ steps.gate.outputs.should_apply }}" = "true" ]; then
+          echo "### ${{ steps.deploy.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "### cloud-app: Terraform apply skipped (smart_apply — manifest unchanged since the previous commit). Image rebuilt; rotation pending (next phase)." >> "$GITHUB_STEP_SUMMARY"
+        fi
