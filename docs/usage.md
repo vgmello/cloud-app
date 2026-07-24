@@ -17,7 +17,7 @@ environments:
       size: medium
 ```
 
-## 2. Call the reusable workflow
+## 2. Run the cloud-app action in your own gated job
 
 `.github/workflows/deploy.yml` in your repo:
 
@@ -32,15 +32,28 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: cloud-app-${{ github.repository }}-dev-${{ github.event_name == 'pull_request' && 'plan' || 'apply' }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
-    uses: vgmello/cloud-app/.github/workflows/cloud-app.yml@v1
-    secrets: inherit
-    with:
-      env: dev
-      plan_only: ${{ github.event_name == 'pull_request' }}
-      repo_ref: v1 # keep in lockstep with the @v1 pin above
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vgmello/cloud-app/.github/actions/cloud-app@v1
+        with:
+          env: dev
+          plan_only: ${{ github.event_name == 'pull_request' }}
+          app-id: ${{ secrets.APP_ID }}
+          app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          app-secrets: |
+            STRIPE_KEY=${{ secrets.STRIPE_KEY }}
 ```
+
+App secrets are enumerated explicitly under `app-secrets` — one `NAME=value`
+per line, matching the manifest `secrets:` list.
 
 ## 3. Configure GitHub environments
 
@@ -101,5 +114,5 @@ See [trust-modes.md](trust-modes.md) for the three deploy identities, self vs de
 - `runner_access: private` environments require self-hosted runners inside
   the VNet — GitHub-hosted runners cannot reach a firewalled Key Vault.
 - One manifest (one platform call) per workflow run: the config artifact
-  name is fixed, so calling the reusable workflow twice in a single run is
+  name is fixed, so invoking the `cloud-app` action twice in a single run is
   not supported.

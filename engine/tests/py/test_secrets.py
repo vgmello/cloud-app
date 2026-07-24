@@ -88,3 +88,50 @@ def test_sync_retries_set_once_then_fails():
                      fetch_ip=lambda: None, sleep=sleeps.append)
     assert len(run.commands("az", "keyvault", "secret", "set")) == 2
     assert sleeps == [15]
+
+
+def test_parse_pairs_basic():
+    assert secrets.parse_pairs("STRIPE_KEY=sk_live_123") == {"STRIPE_KEY": "sk_live_123"}
+
+
+def test_parse_pairs_splits_on_first_equals():
+    # base64 / values that themselves contain '='
+    assert secrets.parse_pairs("TOKEN=YWJjПw==") == {"TOKEN": "YWJjПw=="}
+
+
+def test_parse_pairs_multiple_and_blank_lines():
+    text = "A=1\n\n  \nB=two=parts\n"
+    assert secrets.parse_pairs(text) == {"A": "1", "B": "two=parts"}
+
+
+def test_parse_pairs_empty_value():
+    assert secrets.parse_pairs("NAME=") == {"NAME": ""}
+
+
+def test_parse_pairs_missing_equals_raises():
+    with pytest.raises(secrets.SyncError):
+        secrets.parse_pairs("NOT_A_PAIR")
+
+
+def test_parse_pairs_empty_name_raises():
+    with pytest.raises(secrets.SyncError):
+        secrets.parse_pairs("=value")
+
+
+def test_load_secrets_prefers_app_secrets_pairs():
+    env = {"APP_SECRETS": "STRIPE_KEY=sk_1", "ALL_SECRETS": '{"STRIPE_KEY":"ignored"}'}
+    assert secrets.load_secrets(env) == {"STRIPE_KEY": "sk_1"}
+
+
+def test_load_secrets_falls_back_to_all_secrets_json():
+    env = {"ALL_SECRETS": '{"STRIPE_KEY":"sk_2"}'}
+    assert secrets.load_secrets(env) == {"STRIPE_KEY": "sk_2"}
+
+
+def test_load_secrets_blank_app_secrets_falls_back():
+    env = {"APP_SECRETS": "   \n", "ALL_SECRETS": '{"X":"y"}'}
+    assert secrets.load_secrets(env) == {"X": "y"}
+
+
+def test_load_secrets_empty_returns_empty_dict():
+    assert secrets.load_secrets({}) == {}
