@@ -76,6 +76,69 @@ but only for its own resource group. It can never assume the bootstrap identity
 identities, or role assignments at the subscription. GitHub environment required
 reviewers on `environment:<env>` remain the apply approval gate.
 
+## Why a dispatch, not a reusable workflow
+
+The caller's `cloud-app.yml` triggers the bootstrap with a **`workflow_dispatch`
+API call** to the control repo's `bootstrap.yml` — not `uses: …/bootstrap.yml`.
+This is the crux of the privilege boundary, and it turns on **whose OIDC
+identity the job runs under**:
+
+| Mechanism                                   | Runs under                                                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `uses:` reusable workflow (`workflow_call`) | the **caller's** context — OIDC subject `repo:<caller>:…`                                              |
+| `workflow_dispatch` (API trigger)           | the **target's** context — the job runs _in_ the control repo, OIDC subject `repo:vgmello/cloud-app:…` |
+
+The bootstrap identity is subscription-powerful and is federated **only** to
+`repo:vgmello/cloud-app:environment:<env>`. A `uses:` call would run bootstrap in
+the caller's context, so the OIDC token it mints carries `repo:<caller>:…` —
+which does not match the bootstrap identity's federation, so the caller could
+never assume it. Dispatch instead runs `bootstrap.yml` **inside** the control
+repo, whose OIDC subject _does_ match — so only the control repo's runner can
+assume the powerful identity. The caller triggers the powerful step without ever
+being able to run it.
+
+Two distinct credentials make this work:
+
+- **GitHub App token** — the _trigger key_ (control plane). Minted by the caller
+  from `app-id`/`app-private-key`, scoped to `Actions: read/write` on the control
+  repo. It only lets the caller fire and poll `bootstrap.yml`; it is **not** an
+  Azure credential and cannot touch the subscription.
+- **OIDC identities** — the _Azure auth_ (data plane). Minted inside whichever
+  repo's runner is executing: the bootstrap identity inside `bootstrap.yml`, the
+  plan/apply identity inside the caller's `cloud-app.yml`.
+
+What the caller may bootstrap is further gated by the lock registry
+(`registries/<env>/<stack>.yml`, trust-on-first-use) and GitHub environment
+reviewers.
+
+### End-to-end sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as App repo (cloud-app.yml, caller context)
+    participant GH as GitHub API
+    participant Ctl as Control repo (bootstrap.yml, control context)
+    participant Az as Azure
+
+    Note over App,Ctl: Phase 1 — bootstrap (runs in CONTROL context)
+    App->>App: mint GitHub App token (Actions:rw, control repo)
+    App->>GH: dispatch bootstrap.yml (repo, manifest, stack_name, env)
+    GH->>Ctl: start bootstrap.yml
+    Ctl->>Ctl: lock/registry gate — authorize caller for stack
+    Ctl->>Az: OIDC login as bootstrap identity (subject repo:vgmello/cloud-app:...)
+    Az-->>Ctl: subscription-scoped token
+    Ctl->>Az: terraform bootstrap — RG + plan/apply identities (federated to caller)
+    Ctl->>GH: upload artifact {resource_group, plan_client_id, apply_client_id}
+    App->>GH: poll run to completion + download artifact
+    GH-->>App: RG + plan/apply client-ids
+
+    Note over App,Az: Phase 2 — deploy (runs in CALLER context)
+    App->>Az: OIDC login as plan/apply identity (subject repo:caller:...)
+    Az-->>App: RG-scoped token
+    App->>Az: terraform resources — plan/apply the main stack
+```
+
 ## State backends (Azure Blob or AWS S3)
 
 `state_backend.type` in `environments/<env>.yml` selects the backend:
