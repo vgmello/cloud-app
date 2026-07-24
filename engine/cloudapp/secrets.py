@@ -1,5 +1,6 @@
 """Manifest secrets: collection and Key Vault sync."""
 
+import hashlib
 import json
 import re
 import time
@@ -23,6 +24,28 @@ def collect(tool):
     for function in (tool.get("functions") or {}).values():
         names.update(function.get("secrets", []))
     return [{"name": n, "kv_name": n.lower().replace("_", "-")} for n in sorted(names)]
+
+
+_SENTINEL_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+
+
+def sentinel_kv_name(stack_name):
+    """Reserved Key Vault secret name that stores the secret-set hash."""
+    base = _SENTINEL_NON_ALNUM.sub("-", stack_name.lower()).strip("-")
+    return f"{base}-secrets-sentinel"
+
+
+def sentinel_hash(stack_name, secrets, all_secrets):
+    """SHA-256 over the stack name and the sorted name\\0value pairs.
+
+    Order-independent (sorted by name); changes when any value changes or a
+    name is added/removed. The stack name is folded in for cross-vault
+    distinctness (not a security control — see the design spec).
+    """
+    lines = [stack_name]
+    for secret in sorted(secrets, key=lambda s: s["name"]):
+        lines.append(f"{secret['name']}\0{all_secrets[secret['name']]}")
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
 
 def _vault_exists(run, vault, require_vault):
@@ -54,13 +77,14 @@ def _allowlist_runner_ip(run, vault, fetch_ip):
         gha.warning(f"could not allowlist runner IP on {vault}; secret writes may hit the vault firewall")
 
 
-def _secret_unchanged(run, vault, kv_name, value):
-    current = run(
+def _read_secret(run, vault, kv_name):
+    """Current value of a secret, or None if it does not exist."""
+    r = run(
         ["az", "keyvault", "secret", "show", "--vault-name", vault,
          "--name", kv_name, "--query", "value", "-o", "tsv"],
         check=False, capture=True,
     )
-    return current.returncode == 0 and current.stdout.rstrip("\n") == value
+    return r.stdout.rstrip("\n") if r.returncode == 0 else None
 
 
 def _set_secret(run, vault, kv_name, value, sleep):
@@ -79,43 +103,47 @@ def _set_secret(run, vault, kv_name, value, sleep):
     raise SyncError(f"failed to set secret {kv_name}:\n{result.stderr}")
 
 
-def _push_secrets(run, vault, secrets, all_secrets, sleep):
-    for secret in secrets:
-        kv_name = secret["kv_name"]
-        value = all_secrets[secret["name"]]
-        if _secret_unchanged(run, vault, kv_name, value):
-            print(f"{kv_name} unchanged")
-            continue
-        _set_secret(run, vault, kv_name, value, sleep)
-        print(f"synced {kv_name}")
-
-
 def sync(tool, vault, all_secrets, run, require_vault=False, fetch_ip=_runner.fetch_runner_ip,
          sleep=time.sleep):
     """Push manifest secrets into the vault. Returns action outputs.
 
-    Tolerates a not-yet-created vault (first deploy) unless require_vault;
-    allowlists the runner IP first (hosted runners change IP per job and the
-    vault firewall holds the previous apply's IP); idempotent per secret with
-    one RBAC-propagation retry.
+    Reads a per-stack sentinel secret holding a hash of the current secret set;
+    when it matches, skips all writes. Otherwise upserts every mapped secret and
+    writes the sentinel last (crash-safe). Never deletes. Tolerates a
+    not-yet-created vault (first deploy) unless require_vault; allowlists the
+    runner IP first.
+    To force a full re-sync (e.g. after a secret was edited directly in the vault), delete the '<stack>-secrets-sentinel' secret so the next run sees a mismatch.
     """
     secrets = collect(tool)
     outputs = {"secret-count": len(secrets)}
     if not secrets:
         print("no manifest secrets to sync")
-        return {**outputs, "vault-exists": "true"}
+        return {**outputs, "vault-exists": "true", "secrets-changed": "false"}
 
     missing = [s["name"] for s in secrets if s["name"] not in all_secrets]
     if missing:
         raise SyncError("missing GitHub environment secrets: " + ", ".join(missing))
 
     if not _vault_exists(run, vault, require_vault):
-        return {**outputs, "vault-exists": "false"}
+        return {**outputs, "vault-exists": "false", "secrets-changed": "false"}
+
+    sentinel = sentinel_kv_name(tool["name"])
+    if any(s["kv_name"] == sentinel for s in secrets):
+        raise SyncError(f"a manifest secret collides with the reserved sentinel name '{sentinel}'")
 
     # Only now that the vault exists do we need this runner's IP on its firewall.
     _allowlist_runner_ip(run, vault, fetch_ip)
-    _push_secrets(run, vault, secrets, all_secrets, sleep)
-    return {**outputs, "vault-exists": "true"}
+
+    want = sentinel_hash(tool["name"], secrets, all_secrets)
+    if _read_secret(run, vault, sentinel) == want:
+        print("secrets unchanged (sentinel)")
+        return {**outputs, "vault-exists": "true", "secrets-changed": "false"}
+
+    for secret in secrets:
+        _set_secret(run, vault, secret["kv_name"], all_secrets[secret["name"]], sleep)
+        print(f"synced {secret['kv_name']}")
+    _set_secret(run, vault, sentinel, want, sleep)  # last: crash-safe
+    return {**outputs, "vault-exists": "true", "secrets-changed": "true"}
 
 
 def parse_pairs(text):
