@@ -14,7 +14,7 @@ inputs:
     required: true
   manifest:
     description: Path to the cloud-app manifest in the caller repo
-    default: .cloud-app.yml
+    default: cloud-app.yml
   plan_only:
     description: Plan without applying
     default: "false"

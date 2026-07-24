@@ -1,7 +1,7 @@
 # cloud-app
 
 A deployment platform that lets teams ship Azure resources through Terraform
-without writing any. Describe an app in a small `.cloud-app.yml` manifest at
+without writing any. Describe an app in a small `cloud-app.yml` manifest at
 the root of its repo; a composite GitHub Action, invoked as a step in your own
 gated job, translates the manifest into Terraform and deploys it. Behind the
 scenes each tool gets a
@@ -13,7 +13,7 @@ database and blob storage — wired together over private networking by default.
 Two files in your repo:
 
 ```yaml
-# .cloud-app.yml
+# cloud-app.yml
 name: orders-api
 app:
   port: 8080

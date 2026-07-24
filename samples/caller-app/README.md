@@ -7,7 +7,7 @@ Two files are all an app repo needs:
 
 | File                              | Purpose                                                       |
 | --------------------------------- | ------------------------------------------------------------- |
-| `.cloud-app.yml`                  | The stack manifest — what to deploy (apps, database, secrets) |
+| `cloud-app.yml`                  | The stack manifest — what to deploy (apps, database, secrets) |
 | `.github/workflows/cloud-app.yml` | Runs the `cloud-app` action in this repo's own gated job      |
 
 ## How it works

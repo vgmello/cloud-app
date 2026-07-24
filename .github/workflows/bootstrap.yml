@@ -14,7 +14,7 @@ on:
       manifest:
         description: Path to the cloud-app manifest in the caller repo
         required: false
-        default: .cloud-app.yml
+        default: cloud-app.yml
       stack_name:
         description: Stack name (must match the manifest name)
         required: true

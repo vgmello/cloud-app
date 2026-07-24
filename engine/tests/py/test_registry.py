@@ -33,9 +33,9 @@ def test_validate_names_rejects_bad_caller_repo(repo):
 def test_resolve_stack_path_returns_path_inside_root(tmp_path):
     root = tmp_path / "caller-workspace"
     root.mkdir()
-    (root / ".cloud-app.yml").write_text("name: orders\n")
-    resolved = registry.resolve_stack_path(str(root), ".cloud-app.yml")
-    assert resolved == str((root / ".cloud-app.yml").resolve())
+    (root / "cloud-app.yml").write_text("name: orders\n")
+    resolved = registry.resolve_stack_path(str(root), "cloud-app.yml")
+    assert resolved == str((root / "cloud-app.yml").resolve())
 
 
 def test_resolve_stack_path_rejects_parent_escape(tmp_path):

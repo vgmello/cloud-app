@@ -1,4 +1,4 @@
-"""Manifest pipeline: validate .cloud-app.yml, merge env overlays, normalize.
+"""Manifest pipeline: validate cloud-app.yml, merge env overlays, normalize.
 
 Normalized shape (per environment) is the Terraform contract: every app has an
 explicit ``containers`` map and a full ingress object (or none for workers);

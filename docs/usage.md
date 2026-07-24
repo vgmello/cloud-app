@@ -2,7 +2,7 @@
 
 ## 1. Add a manifest
 
-`.cloud-app.yml` at your repo root:
+`cloud-app.yml` at your repo root:
 
 ```yaml
 name: orders-api
