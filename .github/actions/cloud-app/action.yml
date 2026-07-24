@@ -46,6 +46,10 @@ inputs:
       `fetch-depth: 2` so the previous commit is available to diff. Terraform
       always runs regardless for plan-only runs, manual dispatch, first deploys,
       and when the parent commit is unavailable.
+      NOTE: the change signal is the caller's manifest only. A platform-config
+      change (control repo `environments/<env>.yml` — DNS, network, naming) is
+      NOT detected here; roll those out with a manual dispatch or a run with
+      this input set to false.
     default: "true"
 outputs:
   name:
@@ -358,9 +362,12 @@ runs:
 
     - name: Write summary
       shell: bash
+      env:
+        SHOULD_APPLY: ${{ steps.gate.outputs.should_apply }}
+        SUMMARY: ${{ steps.deploy.outputs.summary }}
       run: |
-        if [ "${{ steps.gate.outputs.should_apply }}" = "true" ]; then
-          echo "### ${{ steps.deploy.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
+        if [ "$SHOULD_APPLY" = "true" ]; then
+          echo "### $SUMMARY" >> "$GITHUB_STEP_SUMMARY"
         else
           echo "### cloud-app: Terraform apply skipped (terraform_on_manifest_change — manifest unchanged since the previous commit). Image rebuilt; rotation pending (next phase)." >> "$GITHUB_STEP_SUMMARY"
         fi
