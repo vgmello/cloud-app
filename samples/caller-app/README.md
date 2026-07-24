@@ -7,7 +7,7 @@ Two files are all an app repo needs:
 
 | File                              | Purpose                                                       |
 | --------------------------------- | ------------------------------------------------------------- |
-| `cloud-app.yml`                  | The stack manifest — what to deploy (apps, database, secrets) |
+| `cloud-app.yml`                   | The stack manifest — what to deploy (apps, database, secrets) |
 | `.github/workflows/cloud-app.yml` | Runs the `cloud-app` action in this repo's own gated job      |
 
 ## How it works
@@ -26,6 +26,14 @@ Two files are all an app repo needs:
 4. The bootstrap returns the RG-scoped plan/apply identities, and the action
    deploys under them: `parse -> resolve -> terraform apply`, reporting the
    result back to this workflow.
+
+On an unchanged manifest (a code-only change), the action skips Terraform and
+rolls the freshly built image directly onto the existing container apps /
+functions (`az containerapp update` / `az functionapp config container set`) —
+fast, no plan/apply. A manifest change, first deploy, manual dispatch, or
+`always_run_terraform: true` runs the full Terraform plan+apply instead. Static
+sites are not image-rotated, and a rotated secret with no new commit is picked
+up on the next revision (push a commit or restart the revision to force it).
 
 ## To use in your own app repo
 

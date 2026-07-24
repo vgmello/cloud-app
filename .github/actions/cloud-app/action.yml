@@ -41,8 +41,9 @@ inputs:
       Force Terraform (plan + apply) to run on every invocation. When false
       (default), Terraform runs only when the manifest changed since the
       previous commit; on an unchanged manifest the whole Terraform run is
-      skipped and the image is rebuilt and rotated instead (image rotation is a
-      later phase) — a code/Docker change alone does not trigger Terraform. The
+      skipped and the image is rebuilt and rotated directly onto the existing
+      container apps/functions — a code/Docker change alone does not trigger
+      Terraform. The
       default (false) requires the caller to check out with `fetch-depth: 2` so
       the previous commit is available to diff; Terraform also always runs for
       plan-only runs, manual dispatch, first deploys, and when the parent commit
@@ -339,6 +340,25 @@ runs:
         echo "should_apply=$should_apply" >> "$GITHUB_OUTPUT"
         echo "cloud-app: should_apply=$should_apply ($reason)"
 
+    # Lane B: manifest unchanged (should_apply == false) — skip Terraform and
+    # roll the freshly built image on the existing container apps / functions.
+    # Reached only when state exists (never first deploy), so the resources exist.
+    - name: Rotate images
+      id: rotate
+      if: ${{ steps.gate.outputs.should_apply == 'false' }}
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+        IMAGE_TAGS: ${{ steps.build.outputs.image-tags || '{}' }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp rotate-images
+        --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
+        --environment "$DEPLOY_ENV"
+        --platform-file "${{ steps.platform.outputs.file }}"
+        --image-tags "$IMAGE_TAGS"
+        --resource-group "${{ steps.bootstrap.outputs.resource_group }}"
+
     - name: Terraform deploy
       id: deploy
       if: ${{ steps.gate.outputs.should_apply == 'true' }}
@@ -370,5 +390,5 @@ runs:
         if [ "$SHOULD_APPLY" = "true" ]; then
           echo "### $SUMMARY" >> "$GITHUB_STEP_SUMMARY"
         else
-          echo "### cloud-app: Terraform run skipped — manifest unchanged since the previous commit (set always_run_terraform: true to force it). Image rebuilt; rotation pending (next phase)." >> "$GITHUB_STEP_SUMMARY"
+          echo "### cloud-app: Terraform skipped — manifest unchanged. Rolled the new image directly on the existing container apps/functions (set always_run_terraform: true to force a full Terraform run)." >> "$GITHUB_STEP_SUMMARY"
         fi
