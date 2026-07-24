@@ -10,7 +10,14 @@ locals {
     env_name => "@Microsoft.KeyVault(SecretUri=${var.keyvault_vault_uri}secrets/${secret_name}/)"
   }
 
-  image = try(var.function.image, null) != null ? var.function.image : var.image_tag
+  runtime       = try(var.function.runtime, null)
+  runtime_stack = local.runtime != null ? split(":", local.runtime)[0] : null
+  runtime_ver   = local.runtime != null ? split(":", local.runtime)[1] : null
+
+  # Code functions (runtime set) never render a docker application_stack, even when
+  # `image` is present — for code mode, `image` names a prebuilt BUILDER image the
+  # platform runs to produce /out, not a runtime image for the function app itself.
+  image = local.runtime != null ? null : (try(var.function.image, null) != null ? var.function.image : var.image_tag)
 
   image_first_part   = local.image != null ? split("/", local.image)[0] : ""
   image_has_registry = local.image != null ? (length(split("/", local.image)) > 1 ? (strcontains(local.image_first_part, ".") || strcontains(local.image_first_part, ":") || local.image_first_part == "localhost") : false) : false
@@ -18,10 +25,6 @@ locals {
   image_repo_tag     = local.image_has_registry ? join("/", slice(split("/", local.image), 1, length(split("/", local.image)))) : local.image
   image_repo         = local.image != null ? split(":", local.image_repo_tag)[0] : null
   image_tag_part     = local.image != null ? (length(split(":", local.image_repo_tag)) > 1 ? split(":", local.image_repo_tag)[1] : "latest") : null
-
-  runtime       = try(var.function.runtime, null)
-  runtime_stack = local.runtime != null ? split(":", local.runtime)[0] : null
-  runtime_ver   = local.runtime != null ? split(":", local.runtime)[1] : null
 
   native_dotnet_version              = local.runtime_stack == "dotnet-isolated" ? local.runtime_ver : null
   native_use_dotnet_isolated_runtime = local.runtime_stack == "dotnet-isolated" ? true : null

@@ -20,6 +20,12 @@
         "env": {},
         "secrets": [],
         "image": "myacr.azurecr.io/legacy:1.0"
+      },
+      "prebuilt": {
+        "env": {},
+        "secrets": [],
+        "runtime": "node:20",
+        "image": "myreg/builder:1"
       }
     },
     "environment": "dev",

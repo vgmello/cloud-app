@@ -8,5 +8,8 @@ functions:
     docker: { file: ./Dockerfile.build }
   legacy:
     image: myacr.azurecr.io/legacy:1.0
+  prebuilt:
+    runtime: node:20
+    image: myreg/builder:1
 environments:
   dev: {}

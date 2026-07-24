@@ -72,4 +72,26 @@ run "code_function_uses_runtime_stack" {
     condition     = module.function["legacy"].native_stack == null
     error_message = "container function must have no native application stack"
   }
+  assert {
+    condition     = module.function["prebuilt"].docker_image == null
+    error_message = "runtime+image (prebuilt builder) function must not render a docker application stack"
+  }
+  assert {
+    condition     = module.function["prebuilt"].runtime_stack == "node:20"
+    error_message = "runtime+image (prebuilt builder) function must still surface its runtime stack"
+  }
+  assert {
+    condition     = module.function["prebuilt"].native_stack.node_version == "20"
+    error_message = "runtime+image (prebuilt builder) function must render node_version 20 in application_stack"
+  }
+  assert {
+    condition = (
+      module.function["prebuilt"].native_stack.dotnet_version == null &&
+      module.function["prebuilt"].native_stack.use_dotnet_isolated_runtime == null &&
+      module.function["prebuilt"].native_stack.python_version == null &&
+      module.function["prebuilt"].native_stack.java_version == null &&
+      module.function["prebuilt"].native_stack.powershell_core_version == null
+    )
+    error_message = "runtime+image (prebuilt builder) function must not populate other stacks' native version arguments"
+  }
 }
