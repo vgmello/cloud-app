@@ -112,14 +112,13 @@ def poll_error_action(code, failures, max_failures):
 
 # --- Network primitives ---
 
-def _get_json(url, headers):
-    with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
 def _download(url, headers):
     with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as resp:
         return resp.read()
+
+
+def _get_json(url, headers):
+    return json.loads(_download(url, headers).decode("utf-8"))
 
 
 # --- Network stages ---
