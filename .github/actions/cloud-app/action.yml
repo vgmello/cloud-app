@@ -36,21 +36,22 @@ inputs:
   control-ref:
     description: Ref of the control repo to run bootstrap.yml from
     default: main
-  terraform_on_manifest_change:
+  always_run_terraform:
     description: >-
-      When true (default), run Terraform (plan + apply) only when the manifest
-      changed since the previous commit. On an unchanged manifest the whole
-      Terraform run is skipped and the image is rebuilt and rotated directly
-      instead (image rotation is a later phase) — a code/Docker change alone
-      does not trigger Terraform. Requires the caller to check out with
-      `fetch-depth: 2` so the previous commit is available to diff. Terraform
-      always runs regardless for plan-only runs, manual dispatch, first deploys,
-      and when the parent commit is unavailable.
+      Force Terraform (plan + apply) to run on every invocation. When false
+      (default), Terraform runs only when the manifest changed since the
+      previous commit; on an unchanged manifest the whole Terraform run is
+      skipped and the image is rebuilt and rotated instead (image rotation is a
+      later phase) — a code/Docker change alone does not trigger Terraform. The
+      default (false) requires the caller to check out with `fetch-depth: 2` so
+      the previous commit is available to diff; Terraform also always runs for
+      plan-only runs, manual dispatch, first deploys, and when the parent commit
+      is unavailable.
       NOTE: the change signal is the caller's manifest only. A platform-config
       change (control repo `environments/<env>.yml` — DNS, network, naming) is
-      NOT detected here; roll those out with a manual dispatch or a run with
-      this input set to false.
-    default: "true"
+      NOT detected here; roll those out with a manual dispatch or with
+      always_run_terraform: true.
+    default: "false"
 outputs:
   name:
     description: Resolved stack name (manifest name)
@@ -59,7 +60,7 @@ outputs:
     description: Whether the manifest changed since the previous commit (true if it could not be determined)
     value: ${{ steps.detect.outputs.manifest_changed }}
   applied:
-    description: Whether the Terraform apply/plan step ran (false when terraform_on_manifest_change skipped it)
+    description: Whether the Terraform apply/plan step ran (false when the Terraform run was skipped)
     value: ${{ steps.gate.outputs.should_apply }}
   resource_group:
     description: Resource group created by the bootstrap
@@ -85,7 +86,7 @@ runs:
         fi
 
     # Pure git signal: did the manifest change since the previous commit? Used by
-    # terraform_on_manifest_change. "true" whenever it cannot be proven unchanged (new file, no
+    # always_run_terraform (default false). "true" whenever it cannot be proven unchanged (new file, no
     # parent commit / shallow checkout) so the apply is never skipped on doubt.
     # Needs the caller to check out with fetch-depth >= 2.
     - name: Detect manifest change
@@ -228,7 +229,7 @@ runs:
         tenant-id: ${{ steps.platform.outputs.tenant_id }}
         subscription-id: ${{ steps.platform.outputs.subscription_id }}
 
-    # First-deploy signal for terraform_on_manifest_change: does the Terraform state blob already
+    # First-deploy signal for always_run_terraform: does the Terraform state blob already
     # exist? Authoritative (unlike a manifest diff) and cheap (one az call under
     # the deploy identity, no terraform init). Only meaningful on the apply path.
     - name: Check first deploy
@@ -304,18 +305,18 @@ runs:
         --keyvault-name "${{ steps.platform.outputs.keyvault }}"
         --require-vault
 
-    # Decide whether the Terraform apply runs. Full apply always runs unless
-    # terraform_on_manifest_change is on AND this is a routine apply whose manifest did not
-    # change. Forced on for: plan-only (it is a plan), the flag off, manual
-    # dispatch, and first deploy (no Terraform state yet). STATE_EXISTS is the
-    # authoritative first-deploy signal; anything other than a definite "true"
-    # (first deploy, or an undetermined/failed probe) forces the full apply.
+    # Decide whether the Terraform run happens. It always runs unless this is a
+    # routine apply whose manifest did not change. Forced on for: plan-only (it
+    # is a plan), always_run_terraform, manual dispatch, and first deploy (no
+    # Terraform state yet). STATE_EXISTS is the authoritative first-deploy
+    # signal; anything other than a definite "true" (first deploy, or an
+    # undetermined/failed probe) forces the full run.
     - name: Decide apply
       id: gate
       shell: bash
       env:
         PLAN_ONLY: ${{ inputs.plan_only }}
-        TF_ON_CHANGE: ${{ inputs.terraform_on_manifest_change }}
+        ALWAYS_RUN: ${{ inputs.always_run_terraform }}
         MANIFEST_CHANGED: ${{ steps.detect.outputs.manifest_changed }}
         STATE_EXISTS: ${{ steps.state.outputs.exists }}
         EVENT: ${{ github.event_name }}
@@ -323,8 +324,8 @@ runs:
         should_apply=true
         if [ "$PLAN_ONLY" = "true" ]; then
           reason="plan-only run"
-        elif [ "$TF_ON_CHANGE" != "true" ]; then
-          reason="terraform_on_manifest_change disabled"
+        elif [ "$ALWAYS_RUN" = "true" ]; then
+          reason="always_run_terraform enabled"
         elif [ "$EVENT" = "workflow_dispatch" ]; then
           reason="manual dispatch"
         elif [ "$STATE_EXISTS" != "true" ]; then
@@ -333,7 +334,7 @@ runs:
           reason="manifest changed"
         else
           should_apply=false
-          reason="terraform_on_manifest_change: manifest unchanged — image rotation handles the new image"
+          reason="manifest unchanged — image rotation handles the new image"
         fi
         echo "should_apply=$should_apply" >> "$GITHUB_OUTPUT"
         echo "cloud-app: should_apply=$should_apply ($reason)"
@@ -369,5 +370,5 @@ runs:
         if [ "$SHOULD_APPLY" = "true" ]; then
           echo "### $SUMMARY" >> "$GITHUB_STEP_SUMMARY"
         else
-          echo "### cloud-app: Terraform apply skipped (terraform_on_manifest_change — manifest unchanged since the previous commit). Image rebuilt; rotation pending (next phase)." >> "$GITHUB_STEP_SUMMARY"
+          echo "### cloud-app: Terraform run skipped — manifest unchanged since the previous commit (set always_run_terraform: true to force it). Image rebuilt; rotation pending (next phase)." >> "$GITHUB_STEP_SUMMARY"
         fi

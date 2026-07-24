@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2 # terraform_on_manifest_change diffs the manifest against the previous commit
+          fetch-depth: 2 # the default always_run_terraform: false diffs the manifest against the previous commit
 
       - uses: vgmello/cloud-app/.github/actions/cloud-app@main
         with:
