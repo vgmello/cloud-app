@@ -13,6 +13,7 @@ from . import (
     backend,
     builds,
     dockerbuild,
+    funcdeploy,
     gha,
     identity,
     manifest,
@@ -40,6 +41,11 @@ def _write_json(path, data):
 
 def cmd_parse_manifest(args):
     name, environments, tools, docker = manifest.parse(args.manifest, args.app_root)
+    code_functions = any(
+        manifest.function_mode(f) == "code"
+        for tool in tools.values()
+        for f in (tool.get("functions") or {}).values()
+    )
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
     for stale in list(out.glob("tool.*.json")) + [out / "outputs.txt"]:
@@ -52,6 +58,7 @@ def cmd_parse_manifest(args):
             "name": name,
             "environments": json.dumps(environments, separators=(",", ":")),
             "docker": str(docker).lower(),
+            "code_functions": str(code_functions).lower(),
         },
         fallback_file=out / "outputs.txt",
     )
@@ -112,6 +119,16 @@ def cmd_terraform_deploy(args):
         stack=args.stack,
     )
     gha.write_outputs({"summary": summary})
+
+
+def cmd_deploy_functions(args):
+    import tempfile
+
+    tool = _load_json(args.tool_json)
+    backend_lines = backend.render(args.platform_file, args.tool_name, args.environment, stack="main")
+    with tempfile.TemporaryDirectory(prefix="funcpkg-") as workdir:
+        deployed = funcdeploy.deploy(tool, args.terraform_dir, backend_lines, workdir, runner.run)
+    gha.write_outputs({"deployed": json.dumps(deployed, separators=(",", ":"))})
 
 
 def cmd_login_plan(args):
@@ -254,6 +271,14 @@ def main(argv=None):
     p.add_argument("--targets", default="")
     p.add_argument("--stack", default="main", choices=["main", "bootstrap"])
     p.set_defaults(func=cmd_terraform_deploy)
+
+    p = sub.add_parser("deploy-functions")
+    p.add_argument("--terraform-dir", required=True)
+    p.add_argument("--tool-json", required=True)
+    p.add_argument("--tool-name", required=True)
+    p.add_argument("--environment", required=True)
+    p.add_argument("--platform-file", required=True)
+    p.set_defaults(func=cmd_deploy_functions)
 
     p = sub.add_parser("login-plan")
     p.add_argument("--event", required=True)

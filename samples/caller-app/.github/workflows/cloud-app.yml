@@ -22,6 +22,8 @@ concurrency:
 
 jobs:
   deploy:
+    # For code (runtime) functions with a private SCM endpoint, set this to a
+    # self-hosted runner inside the VNet, e.g. runs-on: [self-hosted, vnet-dev]
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'dev' }}
     steps:

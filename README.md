@@ -70,6 +70,12 @@ The trust & identity model — the split topology (control bootstraps, caller de
 ## Manifest at a glance
 
 - `name` + at least one compute section (`app`/`apps`, `functions`, `static_sites`).
+- A `functions:` entry deploys a container by default. Add `runtime:`
+  (`dotnet-isolated:8.0`, `node:20`, `python:3.11`, `java:17`, `powershell:7.4`, …)
+  to deploy application code instead: supply `package:` (a directory zipped as-is)
+  or a `docker`/`image` **builder** that writes build output to `/out` (zipped and
+  shipped via `config-zip` after apply). Code functions require a runner that can
+  reach the app's SCM endpoint — a VNet self-hosted runner when private.
 - `app:` is shorthand for a single-app repo; `apps:` is a map for several.
 - Each app takes a `containers:` map (Terraform `template.container` hierarchy);
   single-container fields (`cpu`, `memory`, `docker`/`image`, `env`, `secrets`)

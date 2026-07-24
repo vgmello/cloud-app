@@ -254,14 +254,38 @@
         },
         "databases": {
           "$ref": "#/$defs/db_refs"
+        },
+        "runtime": {
+          "type": "string",
+          "enum": [
+            "dotnet-isolated:8.0",
+            "dotnet-isolated:9.0",
+            "node:20",
+            "node:22",
+            "python:3.11",
+            "python:3.12",
+            "java:17",
+            "java:21",
+            "powershell:7.4"
+          ]
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "allOf": [
+        { "not": { "required": ["image", "docker"] } },
+        { "not": { "required": ["image", "package"] } },
+        { "not": { "required": ["docker", "package"] } },
+        { "if": { "required": ["package"] }, "then": { "required": ["runtime"] } },
         {
-          "not": {
-            "required": [
-              "image",
-              "docker"
+          "if": { "required": ["runtime"] },
+          "then": {
+            "oneOf": [
+              { "required": ["image"] },
+              { "required": ["docker"] },
+              { "required": ["package"] }
             ]
           }
         }

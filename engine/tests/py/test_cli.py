@@ -54,6 +54,19 @@ def test_parse_manifest_cleans_stale_outputs(tmp_path, monkeypatch):
     assert (out / "tool.dev.json").exists()
 
 
+def test_parse_manifest_flags_code_functions(tmp_path):
+    out_dir = tmp_path / "out"
+    rc = cli.main([
+        "parse-manifest",
+        "--manifest", str(FIXTURES / "codefn.yml"),
+        "--output-dir", str(out_dir),
+        "--app-root", str(tmp_path),
+    ])
+    assert rc == 0
+    outputs = (out_dir / "outputs.txt").read_text()
+    assert "code_functions=true" in outputs
+
+
 def test_invalid_manifest_returns_nonzero_and_writes_nothing(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
     out = tmp_path / "ct"
