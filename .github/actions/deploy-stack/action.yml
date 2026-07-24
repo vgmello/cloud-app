@@ -8,7 +8,7 @@ inputs:
   stack-file:
     description: 'Manifest path within the caller repo'
     required: false
-    default: 'cloud-app.yml'
+    default: '.cloud-app.yml'
   stack-name:
     description: 'Stack name (state key prefix); must match the manifest name'
     required: true

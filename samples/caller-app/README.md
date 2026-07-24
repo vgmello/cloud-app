@@ -7,7 +7,7 @@ Two files are all an app repo needs:
 
 | File                           | Purpose                                                       |
 | ------------------------------ | ------------------------------------------------------------- |
-| `cloud-app.yml`                | The stack manifest — what to deploy (apps, database, secrets) |
+| `.cloud-app.yml`                | The stack manifest — what to deploy (apps, database, secrets) |
 | `.github/workflows/deploy.yml` | Dispatches the deploy to the control repo (`vgmello/cloud-app`)  |
 
 ## How it works

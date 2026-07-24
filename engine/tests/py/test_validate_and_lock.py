@@ -29,7 +29,7 @@ def run(tmp, env_name, stack_file, expected_name, caller_repo):
     )
 
 
-def setup_workspace(tmp, *, manifest_name="orders", stack_file="cloud-app.yml",
+def setup_workspace(tmp, *, manifest_name="orders", stack_file=".cloud-app.yml",
                     lock_name=None, allowed=None, env_name="dev"):
     caller = tmp / "caller-workspace"
     caller.mkdir()
@@ -49,34 +49,34 @@ def setup_workspace(tmp, *, manifest_name="orders", stack_file="cloud-app.yml",
 def test_missing_stack_file_rejected(tmp_path):
     (tmp_path / "central-workspace" / "registries" / "dev").mkdir(parents=True)
     (tmp_path / "caller-workspace").mkdir()
-    r = run(tmp_path, "dev", "cloud-app.yml", "orders", "acme/orders")
+    r = run(tmp_path, "dev", ".cloud-app.yml", "orders", "acme/orders")
     assert r.returncode == 1
     assert "not found" in r.stdout
 
 
 def test_name_mismatch_rejected(tmp_path):
     setup_workspace(tmp_path, manifest_name="something-else")
-    r = run(tmp_path, "dev", "cloud-app.yml", "orders", "acme/orders")
+    r = run(tmp_path, "dev", ".cloud-app.yml", "orders", "acme/orders")
     assert r.returncode == 1
     assert "MISMATCH" in r.stdout
 
 
 def test_unauthorized_repo_rejected(tmp_path):
     setup_workspace(tmp_path, manifest_name="orders", lock_name="orders", allowed=["acme/orders"])
-    r = run(tmp_path, "dev", "cloud-app.yml", "orders", "evil/fork")
+    r = run(tmp_path, "dev", ".cloud-app.yml", "orders", "evil/fork")
     assert r.returncode == 1
     assert "SECURITY VIOLATION" in r.stdout
 
 
 def test_authorized_repo_allowed(tmp_path):
     setup_workspace(tmp_path, manifest_name="orders", lock_name="orders", allowed=["acme/orders"])
-    r = run(tmp_path, "dev", "cloud-app.yml", "orders", "acme/orders")
+    r = run(tmp_path, "dev", ".cloud-app.yml", "orders", "acme/orders")
     assert r.returncode == 0
     assert "authorized" in r.stdout
 
 
 def test_missing_name_falls_back_to_input(tmp_path):
     setup_workspace(tmp_path, manifest_name=None, lock_name="orders", allowed=["acme/orders"])
-    r = run(tmp_path, "dev", "cloud-app.yml", "orders", "acme/orders")
+    r = run(tmp_path, "dev", ".cloud-app.yml", "orders", "acme/orders")
     assert r.returncode == 0
     assert "authorized" in r.stdout

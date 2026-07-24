@@ -24,14 +24,14 @@ def dw():
 def test_collect_target_inputs_maps_and_filters(dw):
     environ = {
         "INPUT_REPO": "acme/orders",
-        "INPUT_STACK_FILE": "cloud-app.yml",
+        "INPUT_MANIFEST": ".cloud-app.yml",
         "INPUT_STACK_NAME": "orders",
         "GH_TOKEN": "secret",
         "PATH": "/usr/bin",
     }
     assert dw.collect_target_inputs(environ) == {
         "repo": "acme/orders",
-        "stack_file": "cloud-app.yml",
+        "manifest": ".cloud-app.yml",
         "stack_name": "orders",
     }
 

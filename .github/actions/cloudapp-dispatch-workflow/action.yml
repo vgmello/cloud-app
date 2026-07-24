@@ -16,7 +16,7 @@ inputs:
   stack-file:
     description: 'Stack manifest path passed through to the target workflow'
     required: false
-    default: 'cloud-app.yml'
+    default: '.cloud-app.yml'
   stack-name:
     description: 'Stack name passed to the target workflow (the deploy identity/lock key)'
     required: true

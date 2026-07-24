@@ -37,12 +37,14 @@ jobs:
     uses: vgmello/cloud-app/.github/workflows/deploy.yml@v1
     secrets: inherit
     with:
+      env: dev
+      stack_name: orders-api
       plan_only: ${{ github.event_name == 'pull_request' }}
-      deploy_ref: v1
+      repo_ref: v1
 ```
 
 Full manifest reference and onboarding steps: [docs/usage.md](docs/usage.md).
-The trust & identity model — three deploy identities, self/delegated modes, state backends (design implemented and tested; workflow wiring pending): [docs/trust-modes.md](docs/trust-modes.md).
+The trust & identity model — the split topology (control bootstraps, caller deploys under RG-scoped identities), state backends, and the security boundary (wired, not yet live-validated): [docs/trust-modes.md](docs/trust-modes.md).
 
 ## What's in this repo
 
