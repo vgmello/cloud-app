@@ -1,8 +1,10 @@
 """Dispatch a workflow_dispatch in a target repo and wait for the run.
 
-The pure helpers (input collection, payload/artifact/output handling, step
-rendering) are importable and unit-tested; only `main()` touches the network
-and the GitHub Actions environment.
+The pure helpers (input collection, URL/header building, payload/artifact/output
+handling, step and status rendering, poll-error classification) are importable
+and unit-tested. The network stages (`dispatch_run`, `wait_for_completion`,
+`expose_deployment_outputs`) touch the GitHub API and the Actions environment
+and are exercised only end-to-end; `main()` just wires them together.
 """
 
 import io
@@ -14,11 +16,17 @@ import urllib.error
 import urllib.request
 import zipfile
 
+API = "https://api.github.com"
+
 # Give up polling after this many consecutive failures (~1 min at 10s each) so a
 # persistent 404 (wrong run id) or expired token does not loop until the job's
 # own timeout.
 MAX_POLL_FAILURES = 6
 
+POLL_INTERVAL = 10
+
+
+# --- Pure helpers (unit-tested) ---
 
 def collect_target_inputs(environ):
     """Map INPUT_* env vars to workflow_dispatch inputs (INPUT_STACK_FILE ->
@@ -28,6 +36,31 @@ def collect_target_inputs(environ):
         for key, value in environ.items()
         if key.startswith("INPUT_")
     }
+
+
+def build_headers(token):
+    return {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+    }
+
+
+def dispatches_url(owner, repo, workflow_id):
+    return f"{API}/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches"
+
+
+def run_url(owner, repo, run_id):
+    return f"{API}/repos/{owner}/{repo}/actions/runs/{run_id}"
+
+
+def jobs_url(owner, repo, run_id):
+    return f"{run_url(owner, repo, run_id)}/jobs"
+
+
+def artifacts_url(owner, repo, run_id):
+    return f"{run_url(owner, repo, run_id)}/artifacts"
 
 
 def build_payload(ref, inputs):
@@ -65,135 +98,180 @@ def step_key(job, step):
     return f"{job['id']}_{step['name']}_{step['status']}"
 
 
-def main():
-    owner = os.environ["TARGET_OWNER"]
-    repo = os.environ["TARGET_REPO"]
-    workflow_id = os.environ["TARGET_WORKFLOW"]
-    branch = os.environ.get("TARGET_BRANCH", "main")
-    token = os.environ["GH_TOKEN"]
+def collect_step_lines(jobs_data, seen):
+    """Printable lines for step transitions not yet in `seen`; records each key
+    in `seen` so a transition prints once across polls."""
+    lines = []
+    for job in jobs_data.get("jobs", []):
+        for step in job.get("steps", []):
+            key = step_key(job, step)
+            if key in seen:
+                continue
+            seen.add(key)
+            line = render_step(step)
+            if line:
+                lines.append(line)
+    return lines
 
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {token}",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
-    }
 
-    def get(url):
-        return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers=headers)).read().decode("utf-8"))
+def status_line(status):
+    if status == "queued":
+        return "Status: queued (waiting for concurrent deployment lock)..."
+    return f"Status: {status}..."
 
-    target_inputs = collect_target_inputs(os.environ)
-    print(f"Target: {owner}/{repo} -> {workflow_id} (Branch: {branch})")
-    print(f"Workflow Inputs: {target_inputs}")
 
-    dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches"
-    dispatch_req = urllib.request.Request(
-        dispatch_url,
-        data=json.dumps(build_payload(branch, target_inputs)).encode("utf-8"),
+def poll_error_action(code, failures, max_failures):
+    """What to do after a failed status poll: 'auth' (fatal, bad token),
+    'giveup' (too many consecutive failures), or 'retry'."""
+    if code in (401, 403):
+        return "auth"
+    if failures >= max_failures:
+        return "giveup"
+    return "retry"
+
+
+# --- Network primitives ---
+
+def _get_json(url, headers):
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _download(url, headers):
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as resp:
+        return resp.read()
+
+
+# --- Network stages ---
+
+def dispatch_run(owner, repo, workflow_id, branch, inputs, headers):
+    """POST the workflow_dispatch and return (run_id, html_url). Exit on error."""
+    req = urllib.request.Request(
+        dispatches_url(owner, repo, workflow_id),
+        data=json.dumps(build_payload(branch, inputs)).encode("utf-8"),
         headers=headers,
         method="POST",
     )
     try:
-        with urllib.request.urlopen(dispatch_req) as resp:
+        with urllib.request.urlopen(req) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         print(f"::error::HTTP Error {e.code}: {e.read().decode('utf-8')}")
         sys.exit(1)
+    return data["workflow_run_id"], data.get("html_url", "")
 
-    run_id = data["workflow_run_id"]
-    run_html_url = data.get("html_url", "")
-    print(f"\nDispatched successfully! Run ID: {run_id}")
-    print(f"Run URL: {run_html_url}")
 
+def record_run_url(run_html_url):
+    """Expose the target run URL to later steps via $GITHUB_ENV."""
     github_env = os.environ.get("GITHUB_ENV")
     if github_env:
         with open(github_env, "a") as fh:
             fh.write(f"TARGET_RUN_URL={run_html_url}\n")
 
-    def expose_deployment_outputs():
-        gh_output = os.environ.get("GITHUB_OUTPUT")
-        if not gh_output:
-            return
-        artifacts_url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
-        try:
-            artifacts = get(artifacts_url).get("artifacts", [])
-        except Exception as exc:
-            print(f"::warning::could not list artifacts for run {run_id}: {exc}")
-            return
-        target = pick_artifact(artifacts, run_id)
-        if not target:
-            print("::warning::no deployment-outputs artifact on the target run")
-            return
-        try:
-            with urllib.request.urlopen(urllib.request.Request(target["archive_download_url"], headers=headers)) as resp:
-                results = extract_results(resp.read())
-        except Exception as exc:
-            print(f"::warning::could not download/parse deployment outputs: {exc}")
-            return
-        with open(gh_output, "a") as out:
-            out.write(format_output_lines(results))
-        print(f"Exposed deployment outputs: {results}")
 
-    poll_url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}"
-    poll_req = urllib.request.Request(poll_url, headers=headers)
-    jobs_url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
+def expose_deployment_outputs(owner, repo, run_id, headers):
+    """Copy the target run's deployment-results.json into $GITHUB_OUTPUT. Best
+    effort: any missing artifact or fetch failure warns and returns."""
+    gh_output = os.environ.get("GITHUB_OUTPUT")
+    if not gh_output:
+        return
+    try:
+        artifacts = _get_json(artifacts_url(owner, repo, run_id), headers).get("artifacts", [])
+    except Exception as exc:
+        print(f"::warning::could not list artifacts for run {run_id}: {exc}")
+        return
+    target = pick_artifact(artifacts, run_id)
+    if not target:
+        print("::warning::no deployment-outputs artifact on the target run")
+        return
+    try:
+        results = extract_results(_download(target["archive_download_url"], headers))
+    except Exception as exc:
+        print(f"::warning::could not download/parse deployment outputs: {exc}")
+        return
+    with open(gh_output, "a") as out:
+        out.write(format_output_lines(results))
+    print(f"Exposed deployment outputs: {results}")
 
-    def stream_steps(seen):
-        try:
-            jobs_data = get(jobs_url)
-        except Exception:
-            return
-        for job in jobs_data.get("jobs", []):
-            for step in job.get("steps", []):
-                key = step_key(job, step)
-                if key in seen:
-                    continue
-                seen.add(key)
-                line = render_step(step)
-                if line:
-                    print(line)
 
+def _poll_once(poll_req, run_id, failures):
+    """Fetch run status. Returns (run_data, failures) on success. On an HTTP
+    error, applies poll_error_action: exits on auth/give-up, or sleeps and
+    returns (None, incremented failures) to retry."""
+    try:
+        with urllib.request.urlopen(poll_req) as resp:
+            return json.loads(resp.read().decode("utf-8")), 0
+    except urllib.error.HTTPError as e:
+        failures += 1
+        action = poll_error_action(e.code, failures, MAX_POLL_FAILURES)
+        if action == "auth":
+            print(f"::error::Auth failed polling run {run_id} ({e.code}); token invalid or lacks access")
+            sys.exit(1)
+        if action == "giveup":
+            print(f"::error::Gave up polling run {run_id} after {failures} consecutive failures (last {e.code})")
+            sys.exit(1)
+        print(f"Status poll warning ({e.code}), retry {failures}/{MAX_POLL_FAILURES} in {POLL_INTERVAL}s...")
+        time.sleep(POLL_INTERVAL)
+        return None, failures
+
+
+def _fetch_jobs(owner, repo, run_id, headers):
+    """Jobs for the run, or {} if the listing fails (step streaming is best
+    effort and must not abort the poll loop)."""
+    try:
+        return _get_json(jobs_url(owner, repo, run_id), headers)
+    except Exception:
+        return {}
+
+
+def wait_for_completion(owner, repo, run_id, headers):
+    """Poll the run until it completes, streaming step transitions. Returns the
+    final conclusion; exposes deployment outputs on completion."""
+    poll_req = urllib.request.Request(run_url(owner, repo, run_id), headers=headers)
     last_status = None
-    poll_failures = 0
+    failures = 0
     seen_steps = set()
     while True:
-        try:
-            with urllib.request.urlopen(poll_req) as resp:
-                run_data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            if e.code in (401, 403):
-                print(f"::error::Auth failed polling run {run_id} ({e.code}); token invalid or lacks access")
-                sys.exit(1)
-            poll_failures += 1
-            if poll_failures >= MAX_POLL_FAILURES:
-                print(f"::error::Gave up polling run {run_id} after {poll_failures} consecutive failures (last {e.code})")
-                sys.exit(1)
-            print(f"Status poll warning ({e.code}), retry {poll_failures}/{MAX_POLL_FAILURES} in 10s...")
-            time.sleep(10)
+        run_data, failures = _poll_once(poll_req, run_id, failures)
+        if run_data is None:
             continue
 
-        poll_failures = 0
         status = run_data["status"]
-        conclusion = run_data.get("conclusion")
-
         if status != last_status:
-            if status == "queued":
-                print("Status: queued (waiting for concurrent deployment lock)...")
-            else:
-                print(f"Status: {status}...")
+            print(status_line(status))
             last_status = status
 
-        stream_steps(seen_steps)
+        for line in collect_step_lines(_fetch_jobs(owner, repo, run_id, headers), seen_steps):
+            print(line)
 
         if status == "completed":
+            conclusion = run_data.get("conclusion")
             print(f"\nTarget workflow complete: {(conclusion or 'unknown').upper()}")
             print(f"View logs: {run_data.get('html_url', '')}")
-            expose_deployment_outputs()
-            if conclusion != "success":
-                sys.exit(1)
-            break
+            expose_deployment_outputs(owner, repo, run_id, headers)
+            return conclusion
 
-        time.sleep(10)
+        time.sleep(POLL_INTERVAL)
+
+
+def main():
+    owner = os.environ["TARGET_OWNER"]
+    repo = os.environ["TARGET_REPO"]
+    workflow_id = os.environ["TARGET_WORKFLOW"]
+    branch = os.environ.get("TARGET_BRANCH", "main")
+    headers = build_headers(os.environ["GH_TOKEN"])
+
+    inputs = collect_target_inputs(os.environ)
+    print(f"Target: {owner}/{repo} -> {workflow_id} (Branch: {branch})")
+    print(f"Workflow Inputs: {inputs}")
+
+    run_id, run_html_url = dispatch_run(owner, repo, workflow_id, branch, inputs, headers)
+    print(f"\nDispatched successfully! Run ID: {run_id}")
+    print(f"Run URL: {run_html_url}")
+    record_run_url(run_html_url)
+
+    if wait_for_completion(owner, repo, run_id, headers) != "success":
+        sys.exit(1)
 
 
 if __name__ == "__main__":
