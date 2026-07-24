@@ -112,6 +112,7 @@ def sync(tool, vault, all_secrets, run, require_vault=False, fetch_ip=_runner.fe
     writes the sentinel last (crash-safe). Never deletes. Tolerates a
     not-yet-created vault (first deploy) unless require_vault; allowlists the
     runner IP first.
+    To force a full re-sync (e.g. after a secret was edited directly in the vault), delete the '<stack>-secrets-sentinel' secret so the next run sees a mismatch.
     """
     secrets = collect(tool)
     outputs = {"secret-count": len(secrets)}
@@ -126,12 +127,12 @@ def sync(tool, vault, all_secrets, run, require_vault=False, fetch_ip=_runner.fe
     if not _vault_exists(run, vault, require_vault):
         return {**outputs, "vault-exists": "false", "secrets-changed": "false"}
 
-    # Only now that the vault exists do we need this runner's IP on its firewall.
-    _allowlist_runner_ip(run, vault, fetch_ip)
-
     sentinel = sentinel_kv_name(tool["name"])
     if any(s["kv_name"] == sentinel for s in secrets):
         raise SyncError(f"a manifest secret collides with the reserved sentinel name '{sentinel}'")
+
+    # Only now that the vault exists do we need this runner's IP on its firewall.
+    _allowlist_runner_ip(run, vault, fetch_ip)
 
     want = sentinel_hash(tool["name"], secrets, all_secrets)
     if _read_secret(run, vault, sentinel) == want:
