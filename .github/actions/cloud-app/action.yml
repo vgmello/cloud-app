@@ -4,7 +4,10 @@ description: >-
   bootstrap (Phase 1: RG + plan/apply identities federated to this repo), then
   runs the resource deploy under those RG-scoped identities (Phase 2). Invoke
   as a step in a job that sets `environment:` — the OIDC subject the RG-scoped
-  identities trust.
+  identities trust. Prerequisite: the caller repo must already be checked out
+  in the workspace (add `uses: actions/checkout` as a prior step); this action
+  reads the manifest and Dockerfile/context from it and does not check out for
+  you.
 inputs:
   env:
     description: Target environment to deploy (must be declared in the manifest)
@@ -46,6 +49,20 @@ outputs:
 runs:
   using: composite
   steps:
+    # Precondition: this action operates on an already-checked-out workspace and
+    # never checks out for the caller (that would clobber their workspace and
+    # steal ref/token/checkout-option control). Fail fast with an actionable
+    # message if the manifest is absent — the usual cause is a missing checkout.
+    - name: Require caller checkout
+      shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        if [ ! -f "$MANIFEST" ]; then
+          echo "::error::cloud-app: manifest '$MANIFEST' not found in the workspace. Check out the caller repo before this action — add a step 'uses: actions/checkout@v4' ahead of it (and set the 'manifest:' input if your manifest is not at the repo root)."
+          exit 1
+        fi
+
     - name: Install engine deps
       shell: bash
       run: pip install -q -r "${{ github.action_path }}/../../../engine/requirements.txt"
