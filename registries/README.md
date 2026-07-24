@@ -36,18 +36,25 @@ registered_at: 2026-07-24T12:00:00Z
 
 ## Caller usage
 
-An app repo deploys a stack by calling the reusable workflow:
+An app repo deploys a stack by running the `cloud-app` action as a step in
+its own gated job:
 
 ```yaml
 jobs:
   deploy:
-    uses: <owner>/cloud-app/.github/workflows/cloud-app.yml@main
-    secrets: inherit
-    with:
-      env: staging
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: <owner>/cloud-app/.github/actions/cloud-app@main
+        with:
+          env: staging
+          plan_only: ${{ github.event_name == 'pull_request' }}
+          app-id: ${{ secrets.APP_ID }}
+          app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
-The workflow dispatches the control repo to bootstrap the stack (creating the
+The action dispatches the control repo to bootstrap the stack (creating the
 RG + plan/apply identities federated to this repo), then runs the resource
 deploy under those identities. The stack name is the manifest `name:` — the
-workflow resolves it from the manifest, so there is nothing to pass.
+action resolves it from the manifest, so there is nothing to pass.
