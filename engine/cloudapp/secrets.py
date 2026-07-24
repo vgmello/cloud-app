@@ -1,5 +1,6 @@
 """Manifest secrets: collection and Key Vault sync."""
 
+import json
 import re
 import time
 
@@ -115,3 +116,37 @@ def sync(tool, vault, all_secrets, run, require_vault=False, fetch_ip=_runner.fe
     _allowlist_runner_ip(run, vault, fetch_ip)
     _push_secrets(run, vault, secrets, all_secrets, sleep)
     return {**outputs, "vault-exists": "true"}
+
+
+def parse_pairs(text):
+    """Parse newline-delimited NAME=value app secrets into a dict.
+
+    Splits each non-blank line on the first '=' so values may contain '='.
+    Single-line values only (the enumerated caller format cannot express a
+    multiline secret). A line without '=' or with an empty name is an error.
+    """
+    result = {}
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line:
+            continue
+        if "=" not in line:
+            raise SyncError(f"malformed app-secrets line {lineno}: expected NAME=value")
+        name, value = line.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise SyncError(f"malformed app-secrets line {lineno}: empty secret name")
+        result[name] = value
+    return result
+
+
+def load_secrets(env):
+    """Deploy-time secret map from the environment.
+
+    Prefers APP_SECRETS (enumerated NAME=value pairs the caller passes to the
+    cloud-app action); falls back to the legacy ALL_SECRETS JSON blob.
+    """
+    pairs = env.get("APP_SECRETS")
+    if pairs is not None and pairs.strip():
+        return parse_pairs(pairs)
+    return json.loads(env.get("ALL_SECRETS") or "{}")

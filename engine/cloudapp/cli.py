@@ -75,7 +75,7 @@ def cmd_docker_build(args):
 
 def cmd_sync_secrets(args):
     tool = _load_json(args.tool_json)
-    all_secrets = json.loads(os.environ.get("ALL_SECRETS") or "{}")
+    all_secrets = secrets.load_secrets(os.environ)
     outputs = secrets.sync(
         tool,
         args.keyvault_name,
