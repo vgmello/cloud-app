@@ -18,6 +18,10 @@ locals {
   image_repo_tag     = local.image_has_registry ? join("/", slice(split("/", local.image), 1, length(split("/", local.image)))) : local.image
   image_repo         = local.image != null ? split(":", local.image_repo_tag)[0] : null
   image_tag_part     = local.image != null ? (length(split(":", local.image_repo_tag)) > 1 ? split(":", local.image_repo_tag)[1] : "latest") : null
+
+  runtime       = try(var.function.runtime, null)
+  runtime_stack = local.runtime != null ? split(":", local.runtime)[0] : null
+  runtime_ver   = local.runtime != null ? split(":", local.runtime)[1] : null
 }
 
 resource "azurerm_user_assigned_identity" "this" {
@@ -87,14 +91,26 @@ resource "azurerm_linux_function_app" "this" {
         }
       }
     }
+
+    dynamic "application_stack" {
+      for_each = local.runtime != null ? [1] : []
+      content {
+        dotnet_version              = local.runtime_stack == "dotnet-isolated" ? local.runtime_ver : null
+        use_dotnet_isolated_runtime = local.runtime_stack == "dotnet-isolated" ? true : null
+        node_version                = local.runtime_stack == "node" ? local.runtime_ver : null
+        python_version              = local.runtime_stack == "python" ? local.runtime_ver : null
+        java_version                = local.runtime_stack == "java" ? local.runtime_ver : null
+        powershell_core_version     = local.runtime_stack == "powershell" ? local.runtime_ver : null
+      }
+    }
   }
 
   app_settings = merge(try(var.function.env, {}), local.kv_ref_settings)
 
   lifecycle {
     precondition {
-      condition     = local.image != null
-      error_message = "function has no image: no image reference in the manifest and none supplied via image_tags"
+      condition     = local.image != null || local.runtime != null
+      error_message = "function has no image and no runtime: set a container image (or docker build) for container mode, or a runtime for code mode"
     }
   }
 }

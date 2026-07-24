@@ -18,3 +18,8 @@ output "docker_image" {
     image_tag    = local.image_tag_part
   }
 }
+
+output "runtime_stack" {
+  description = "The manifest runtime value (stack:version), null for container functions"
+  value       = local.runtime
+}

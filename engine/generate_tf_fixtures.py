@@ -14,7 +14,14 @@ from cloudapp import manifest, resolve
 PLATFORM = ENGINE / "tests" / "fixtures" / "environments" / "dev.yml"
 OUT = REPO / "terraform" / "azure" / "tests" / "fixtures"
 
-CASES = [("minimal", "dev"), ("full", "prod"), ("multi", "dev"), ("partial", "dev"), ("databases", "dev")]
+CASES = [
+    ("minimal", "dev"),
+    ("full", "prod"),
+    ("multi", "dev"),
+    ("partial", "dev"),
+    ("databases", "dev"),
+    ("codefn", "dev"),
+]
 
 
 def main():
