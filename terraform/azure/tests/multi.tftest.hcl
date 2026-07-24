@@ -14,7 +14,7 @@ run "naming" {
     error_message = "single app must dedupe to the manifest name"
   }
   assert {
-    condition     = output.names.database == "sql-billing-dev"
+    condition     = output.names.databases["main"] == "sql-billing-dev"
     error_message = "sqlserver database must use the sql- prefix"
   }
 }
@@ -23,7 +23,7 @@ run "sqlserver" {
   command = plan
 
   assert {
-    condition     = module.database[0].server_name == "sql-billing-dev"
+    condition     = module.database["main"].server_name == "sql-billing-dev"
     error_message = "sqlserver module must receive the sql- name"
   }
 }

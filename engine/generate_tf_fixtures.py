@@ -14,7 +14,7 @@ from cloudapp import manifest, resolve  # noqa: E402
 PLATFORM = ENGINE / "tests" / "fixtures" / "environments" / "dev.yml"
 OUT = REPO / "terraform" / "azure" / "tests" / "fixtures"
 
-CASES = [("minimal", "dev"), ("full", "prod"), ("multi", "dev"), ("partial", "dev")]
+CASES = [("minimal", "dev"), ("full", "prod"), ("multi", "dev"), ("partial", "dev"), ("databases", "dev")]
 
 
 def main():

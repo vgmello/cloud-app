@@ -35,12 +35,18 @@
         }
       }
     },
-    "database": {
-      "type": "sqlserver",
-      "size": "medium",
-      "storage_gb": 32,
-      "public_access": false
+    "databases": {
+      "main": {
+        "type": "sqlserver",
+        "size": "medium",
+        "storage_gb": 32,
+        "public_access": false,
+        "dbs": [
+          "main"
+        ]
+      }
     },
+    "database_legacy": true,
     "environment": "dev",
     "platform": {
       "subscription_id": "00000000-0000-0000-0000-000000000000",

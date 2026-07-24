@@ -53,18 +53,24 @@
         "secrets": []
       }
     },
-    "database": {
-      "type": "postgres",
-      "size": "medium",
-      "storage_gb": 32,
-      "public_access": false
-    },
     "storage": {
       "containers": [
         "uploads"
       ],
       "public_access": false
     },
+    "databases": {
+      "main": {
+        "type": "postgres",
+        "size": "medium",
+        "storage_gb": 32,
+        "public_access": false,
+        "dbs": [
+          "main"
+        ]
+      }
+    },
+    "database_legacy": true,
     "environment": "prod",
     "platform": {
       "subscription_id": "00000000-0000-0000-0000-000000000000",

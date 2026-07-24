@@ -22,8 +22,8 @@ run "naming" {
     error_message = "single static site must dedupe to the manifest name"
   }
   assert {
-    condition     = output.names.database == "psql-partial-dev"
-    error_message = "database defaulting to postgres must use psql- prefix"
+    condition     = output.names.databases["main"] == "psql-partial-dev"
+    error_message = "legacy database defaulting to postgres must use psql- prefix"
   }
 }
 
