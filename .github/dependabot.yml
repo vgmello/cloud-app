@@ -5,6 +5,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Wait 7 days after an Action version is released before opening a PR
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
@@ -14,6 +17,9 @@ updates:
     directory: /engine
     schedule:
       interval: weekly
+    # Apply a 7-day cooldown for Python package updates
+    cooldown:
+      default-days: 7
     groups:
       python:
         patterns: ["*"]
