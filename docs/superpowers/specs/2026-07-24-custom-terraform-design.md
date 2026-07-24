@@ -108,7 +108,7 @@ module "custom" {
   source = "./custom"
 
   resource_group_name             = local.rg_name
-  location                        = local.location
+  location                        = local.platform.location
   environment                     = local.env
   tool_name                       = local.base
   vnet_id                         = local.platform.network.vnet_id
@@ -178,7 +178,7 @@ is reachable:
 | `environment`                     | string      | env name (dev/prod)                                 |
 | `tool_name`                       | string      | base name for naming derived resources              |
 | `vnet_id`                         | string      | the landing-zone VNet                               |
-| `subnets`                         | object      | `{apps, functions, endpoints}` subnet ids           |
+| `subnets`                         | object      | `{private_endpoints, functions}` subnet ids         |
 | `key_vault_id`                    | string      | grant access / add secrets to the tool's KV         |
 | `key_vault_uri`                   | string      | KV reference URIs                                   |
 | `app_identity_principal_ids`      | map(string) | per-app identity principal id (grant custom access) |
