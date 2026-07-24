@@ -35,7 +35,6 @@ jobs:
           plan_only: ${{ github.event_name == 'pull_request' }}
           app-id: ${{ secrets.APP_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Enumerate exactly the names your manifest `secrets:` list declares.
           app-secrets: |
             STRIPE_KEY=${{ secrets.STRIPE_KEY }}
             SENDGRID_API_KEY=${{ secrets.SENDGRID_API_KEY }}
