@@ -216,3 +216,56 @@ def test_docker_gate_ignores_code_functions():
 def test_docker_gate_still_true_for_container_function():
     tool = {"functions": {"w": {"docker": {"file": "./Dockerfile"}}}}
     assert manifest._uses_docker_build(tool) is True
+
+
+def test_terraform_shorthand_string_is_valid():
+    m = {"name": "orders", "app": {"port": 8080}, "terraform": "./terraform"}
+    assert manifest.validate(m) == []
+
+
+def test_terraform_object_with_providers_is_valid():
+    m = {
+        "name": "orders",
+        "app": {"port": 8080},
+        "terraform": {
+            "dir": "./terraform",
+            "providers": [{"name": "random", "source": "hashicorp/random", "version": "~> 3"}],
+        },
+    }
+    assert manifest.validate(m) == []
+
+
+def test_terraform_object_requires_dir():
+    m = {"name": "orders", "app": {"port": 8080}, "terraform": {"providers": []}}
+    assert manifest.validate(m) != []
+
+
+def test_terraform_rejects_non_allowlisted_provider():
+    m = {
+        "name": "orders",
+        "app": {"port": 8080},
+        "terraform": {
+            "dir": "./terraform",
+            "providers": [{"name": "aws", "source": "hashicorp/aws", "version": "~> 5"}],
+        },
+    }
+    assert manifest.validate(m) != []
+
+
+def test_terraform_rejects_parent_escape_dir():
+    m = {"name": "orders", "app": {"port": 8080}, "terraform": "../evil"}
+    assert manifest.validate(m) != []
+
+
+def test_terraform_rejects_absolute_dir():
+    m = {"name": "orders", "app": {"port": 8080}, "terraform": "/etc"}
+    assert manifest.validate(m) != []
+
+
+def test_terraform_allowed_in_environment_overlay():
+    m = {
+        "name": "orders",
+        "app": {"port": 8080},
+        "environments": {"prod": {"terraform": "./terraform-prod"}},
+    }
+    assert manifest.validate(m) == []

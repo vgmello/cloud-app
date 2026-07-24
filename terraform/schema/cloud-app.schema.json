@@ -92,7 +92,8 @@
       "additionalProperties": {
         "$ref": "#/$defs/overlay"
       }
-    }
+    },
+    "terraform": { "$ref": "#/$defs/custom_terraform" }
   },
   "$defs": {
     "app": {
@@ -406,7 +407,8 @@
         },
         "storage": {
           "$ref": "#/$defs/storage"
-        }
+        },
+        "terraform": { "$ref": "#/$defs/custom_terraform" }
       }
     },
     "ingress": {
@@ -488,6 +490,33 @@
               "image",
               "docker"
             ]
+          }
+        }
+      ]
+    },
+    "provider_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "source", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": ["random", "null", "tls", "time", "local", "external", "azuread", "azapi"]
+        },
+        "source": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "custom_terraform": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.).+$" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dir"],
+          "properties": {
+            "dir": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.).+$" },
+            "providers": { "type": "array", "items": { "$ref": "#/$defs/provider_ref" } }
           }
         }
       ]
