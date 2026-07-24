@@ -1,10 +1,12 @@
-"""Unit tests for the pure helpers in dispatch_and_wait.py. The script ships with
-the composite action (it lives outside the cloudapp package), so it is loaded by
-path; main() and its network calls are not exercised here."""
+"""Unit tests for dispatch_and_wait.py. The script ships with the composite
+action (it lives outside the cloudapp package), so it is loaded by path. Pure
+helpers are tested directly; the network stages are tested with urllib.urlopen
+monkeypatched (see HttpMock), so no real HTTP happens."""
 
 import importlib.util
 import io
 import json
+import urllib.error
 import zipfile
 from pathlib import Path
 
@@ -19,6 +21,48 @@ def dw():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+class _Resp:
+    """Fake urlopen response / context manager. Wraps JSON (dict/list) or bytes."""
+
+    def __init__(self, payload):
+        self._body = json.dumps(payload).encode() if isinstance(payload, (dict, list)) else payload
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class HttpMock:
+    """Routes urlopen by a substring of the request URL. Each route maps to a
+    list of responses (or Exceptions) consumed in order; a single entry repeats.
+    Records every Request for assertions."""
+
+    def __init__(self, routes):
+        self.routes = {key: list(vals) for key, vals in routes.items()}
+        self.requests = []
+
+    def __call__(self, req, *args, **kwargs):
+        url = req.full_url if hasattr(req, "full_url") else req
+        self.requests.append(req)
+        for key, responses in self.routes.items():
+            if key in url:
+                result = responses[0] if len(responses) == 1 else responses.pop(0)
+                if isinstance(result, Exception):
+                    raise result
+                return result
+        raise AssertionError(f"unexpected URL: {url}")
+
+
+@pytest.fixture
+def no_sleep(dw, monkeypatch):
+    monkeypatch.setattr(dw.time, "sleep", lambda *_: None)
 
 
 def test_collect_target_inputs_maps_and_filters(dw):
@@ -38,14 +82,6 @@ def test_collect_target_inputs_maps_and_filters(dw):
 
 def test_collect_target_inputs_empty_when_no_inputs(dw):
     assert dw.collect_target_inputs({"GH_TOKEN": "secret", "PATH": "/usr/bin"}) == {}
-
-
-def test_build_payload_shape(dw):
-    assert dw.build_payload("main", {"env": "dev"}) == {
-        "ref": "main",
-        "inputs": {"env": "dev"},
-        "return_run_details": True,
-    }
 
 
 def test_pick_artifact_matches_run(dw):
@@ -115,15 +151,6 @@ def test_build_headers(dw):
     }
 
 
-def test_url_builders(dw):
-    assert dw.dispatches_url("acme", "orders", "deploy.yml") == \
-        "https://api.github.com/repos/acme/orders/actions/workflows/deploy.yml/dispatches"
-    assert dw.run_url("acme", "orders", 42) == "https://api.github.com/repos/acme/orders/actions/runs/42"
-    assert dw.jobs_url("acme", "orders", 42) == "https://api.github.com/repos/acme/orders/actions/runs/42/jobs"
-    assert dw.artifacts_url("acme", "orders", 42) == \
-        "https://api.github.com/repos/acme/orders/actions/runs/42/artifacts"
-
-
 @pytest.mark.parametrize("code", [401, 403])
 def test_poll_error_action_auth_regardless_of_count(dw, code):
     assert dw.poll_error_action(code, 1, 6) == "auth"
@@ -159,3 +186,85 @@ def test_collect_step_lines_dedups_and_skips_unprintable(dw):
 
 def test_collect_step_lines_empty_jobs(dw):
     assert dw.collect_step_lines({}, set()) == []
+
+
+# --- Network stages (urllib.urlopen monkeypatched) ---
+
+def _zip_results(results):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("deployment-results.json", json.dumps(results))
+    return buf.getvalue()
+
+
+def test_dispatch_run_posts_payload_and_returns_ids(dw, monkeypatch):
+    mock = HttpMock({"/dispatches": [_Resp({"workflow_run_id": 99, "html_url": "https://run/99"})]})
+    monkeypatch.setattr(dw.urllib.request, "urlopen", mock)
+
+    run_id, html = dw.dispatch_run("acme", "orders", "deploy.yml", "main", {"env": "dev"}, dw.build_headers("t"))
+
+    assert (run_id, html) == (99, "https://run/99")
+    req = mock.requests[0]
+    assert req.method == "POST"
+    assert req.full_url == "https://api.github.com/repos/acme/orders/actions/workflows/deploy.yml/dispatches"
+    assert json.loads(req.data) == {"ref": "main", "inputs": {"env": "dev"}, "return_run_details": True}
+
+
+def test_dispatch_run_exits_on_http_error(dw, monkeypatch):
+    err = urllib.error.HTTPError("u", 422, "unprocessable", None, io.BytesIO(b"bad ref"))
+    monkeypatch.setattr(dw.urllib.request, "urlopen", HttpMock({"/dispatches": [err]}))
+    with pytest.raises(SystemExit) as exc:
+        dw.dispatch_run("acme", "orders", "deploy.yml", "main", {}, dw.build_headers("t"))
+    assert exc.value.code == 1
+
+
+def test_expose_deployment_outputs_writes_to_github_output(dw, tmp_path, monkeypatch):
+    out = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    run_api = "https://api.github.com/repos/acme/orders/actions/runs/7"
+    mock = HttpMock({
+        "/artifacts": [_Resp({"artifacts": [{"name": "deployment-outputs-7", "archive_download_url": "https://dl/7"}]})],
+        "https://dl/7": [_Resp(_zip_results({"status": "success", "deployment_url": "https://x"}))],
+    })
+    monkeypatch.setattr(dw.urllib.request, "urlopen", mock)
+
+    dw.expose_deployment_outputs(run_api, 7, dw.build_headers("t"))
+
+    assert out.read_text() == "status=success\ndeployment_url=https://x\n"
+
+
+def test_expose_deployment_outputs_noop_without_github_output(dw, monkeypatch):
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    # urlopen left unpatched: if it were called, the missing route/network would error.
+    mock = HttpMock({})
+    monkeypatch.setattr(dw.urllib.request, "urlopen", mock)
+    dw.expose_deployment_outputs("https://api.github.com/repos/acme/orders/actions/runs/7", 7, dw.build_headers("t"))
+    assert mock.requests == []
+
+
+def test_expose_deployment_outputs_warns_when_artifact_absent(dw, tmp_path, monkeypatch):
+    out = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    mock = HttpMock({"/artifacts": [_Resp({"artifacts": [{"name": "something-else"}]})]})
+    monkeypatch.setattr(dw.urllib.request, "urlopen", mock)
+    dw.expose_deployment_outputs("https://api.github.com/repos/acme/orders/actions/runs/7", 7, dw.build_headers("t"))
+    assert not out.exists()  # nothing written
+
+
+def test_wait_for_completion_polls_until_done(dw, monkeypatch, no_sleep):
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)  # skip output export
+    mock = HttpMock({
+        "/jobs": [_Resp({"jobs": []})],  # matched before /runs/7 (substring order)
+        "/runs/7": [_Resp({"status": "in_progress"}), _Resp({"status": "completed", "conclusion": "success"})],
+    })
+    monkeypatch.setattr(dw.urllib.request, "urlopen", mock)
+
+    assert dw.wait_for_completion("acme", "orders", 7, dw.build_headers("t")) == "success"
+
+
+def test_wait_for_completion_exits_on_auth_error(dw, monkeypatch):
+    err = urllib.error.HTTPError("u", 401, "unauthorized", None, io.BytesIO(b""))
+    monkeypatch.setattr(dw.urllib.request, "urlopen", HttpMock({"/runs/7": [err]}))
+    with pytest.raises(SystemExit) as exc:
+        dw.wait_for_completion("acme", "orders", 7, dw.build_headers("t"))
+    assert exc.value.code == 1

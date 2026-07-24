@@ -1,8 +1,11 @@
 [run]
 source = cloudapp
+# Emit repo-relative file paths in coverage.xml so the SonarQube scanner (which
+# runs inside a container where absolute host paths don't exist) can map them.
+relative_files = True
 omit =
-    cloudapp/__main__.py
-    cloudapp/runner.py
+    **/cloudapp/__main__.py
+    **/cloudapp/runner.py
 
 [report]
 exclude_lines =

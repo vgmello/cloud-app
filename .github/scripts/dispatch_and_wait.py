@@ -1,10 +1,10 @@
 """Dispatch a workflow_dispatch in a target repo and wait for the run.
 
-The pure helpers (input collection, URL/header building, payload/artifact/output
-handling, step and status rendering, poll-error classification) are importable
-and unit-tested. The network stages (`dispatch_run`, `wait_for_completion`,
-`expose_deployment_outputs`) touch the GitHub API and the Actions environment
-and are exercised only end-to-end; `main()` just wires them together.
+The pure helpers (input collection, header building, artifact/output handling,
+step and status rendering, poll-error classification) are importable and
+unit-tested. The network stages (`dispatch_run`, `wait_for_completion`,
+`expose_deployment_outputs`) are tested with urllib.urlopen monkeypatched;
+`main()` just wires them together.
 """
 
 import io
@@ -45,26 +45,6 @@ def build_headers(token):
         "X-GitHub-Api-Version": "2022-11-28",
         "Content-Type": "application/json",
     }
-
-
-def dispatches_url(owner, repo, workflow_id):
-    return f"{API}/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches"
-
-
-def run_url(owner, repo, run_id):
-    return f"{API}/repos/{owner}/{repo}/actions/runs/{run_id}"
-
-
-def jobs_url(owner, repo, run_id):
-    return f"{run_url(owner, repo, run_id)}/jobs"
-
-
-def artifacts_url(owner, repo, run_id):
-    return f"{run_url(owner, repo, run_id)}/artifacts"
-
-
-def build_payload(ref, inputs):
-    return {"ref": ref, "inputs": inputs, "return_run_details": True}
 
 
 def pick_artifact(artifacts, run_id):
@@ -147,8 +127,8 @@ def _download(url, headers):
 def dispatch_run(owner, repo, workflow_id, branch, inputs, headers):
     """POST the workflow_dispatch and return (run_id, html_url). Exit on error."""
     req = urllib.request.Request(
-        dispatches_url(owner, repo, workflow_id),
-        data=json.dumps(build_payload(branch, inputs)).encode("utf-8"),
+        f"{API}/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches",
+        data=json.dumps({"ref": branch, "inputs": inputs, "return_run_details": True}).encode("utf-8"),
         headers=headers,
         method="POST",
     )
@@ -169,14 +149,14 @@ def record_run_url(run_html_url):
             fh.write(f"TARGET_RUN_URL={run_html_url}\n")
 
 
-def expose_deployment_outputs(owner, repo, run_id, headers):
+def expose_deployment_outputs(run_api, run_id, headers):
     """Copy the target run's deployment-results.json into $GITHUB_OUTPUT. Best
     effort: any missing artifact or fetch failure warns and returns."""
     gh_output = os.environ.get("GITHUB_OUTPUT")
     if not gh_output:
         return
     try:
-        artifacts = _get_json(artifacts_url(owner, repo, run_id), headers).get("artifacts", [])
+        artifacts = _get_json(f"{run_api}/artifacts", headers).get("artifacts", [])
     except Exception as exc:
         print(f"::warning::could not list artifacts for run {run_id}: {exc}")
         return
@@ -215,11 +195,11 @@ def _poll_once(poll_req, run_id, failures):
         return None, failures
 
 
-def _fetch_jobs(owner, repo, run_id, headers):
+def _fetch_jobs(run_api, headers):
     """Jobs for the run, or {} if the listing fails (step streaming is best
     effort and must not abort the poll loop)."""
     try:
-        return _get_json(jobs_url(owner, repo, run_id), headers)
+        return _get_json(f"{run_api}/jobs", headers)
     except Exception:
         return {}
 
@@ -227,7 +207,8 @@ def _fetch_jobs(owner, repo, run_id, headers):
 def wait_for_completion(owner, repo, run_id, headers):
     """Poll the run until it completes, streaming step transitions. Returns the
     final conclusion; exposes deployment outputs on completion."""
-    poll_req = urllib.request.Request(run_url(owner, repo, run_id), headers=headers)
+    run_api = f"{API}/repos/{owner}/{repo}/actions/runs/{run_id}"
+    poll_req = urllib.request.Request(run_api, headers=headers)
     last_status = None
     failures = 0
     seen_steps = set()
@@ -241,14 +222,14 @@ def wait_for_completion(owner, repo, run_id, headers):
             print(status_line(status))
             last_status = status
 
-        for line in collect_step_lines(_fetch_jobs(owner, repo, run_id, headers), seen_steps):
+        for line in collect_step_lines(_fetch_jobs(run_api, headers), seen_steps):
             print(line)
 
         if status == "completed":
             conclusion = run_data.get("conclusion")
             print(f"\nTarget workflow complete: {(conclusion or 'unknown').upper()}")
             print(f"View logs: {run_data.get('html_url', '')}")
-            expose_deployment_outputs(owner, repo, run_id, headers)
+            expose_deployment_outputs(run_api, run_id, headers)
             return conclusion
 
         time.sleep(POLL_INTERVAL)
