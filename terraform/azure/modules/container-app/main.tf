@@ -113,7 +113,7 @@ resource "azurerm_container_app" "this" {
         for ck, c in var.app.containers :
         length(setintersection(keys(try(c.env, {})), concat(try(c.secrets, []), keys(var.extra_secret_env)))) == 0
       ])
-      error_message = "container env keys must not collide with secret names or reserved env vars (DATABASE_URL, STORAGE_CONNECTION)"
+      error_message = "container env keys must not collide with secret names or reserved env vars (per-database *_DATABASE_URL, STORAGE_CONNECTION)"
     }
   }
 }
