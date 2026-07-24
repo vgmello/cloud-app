@@ -5,10 +5,10 @@ phases, and lets untrusted repos deploy without holding deploy-capable
 credentials.
 
 > **Status — wired, not yet validated against live Azure.** The split topology
-> is now implemented end to end: `cloud-app.yml` runs the bootstrap in the
-> control repo (federating plan/apply to the caller), and the caller `deploy.yml`
-> dispatches it, then runs the resource deploy under the RG-scoped plan/apply
-> identities. It has **not** been run against a real subscription — OIDC token
+> is now implemented end to end: the control repo's `bootstrap.yml` runs the
+> bootstrap (federating plan/apply to the caller), and the caller's reusable
+> `cloud-app.yml` dispatches it, then runs the resource deploy under the
+> RG-scoped plan/apply identities. It has **not** been run against a real subscription — OIDC token
 > exchange and RBAC propagation after the identities are minted still need a
 > sandbox run before relying on the boundary.
 
@@ -123,8 +123,8 @@ automated on deploy.
 The logic and Terraform stacks are built and unit-tested, but these connecting
 pieces are not implemented yet:
 
-- **Phase handoff (wired).** `deploy.yml`'s `bootstrap` job dispatches
-  `cloud-app.yml` via `cloudapp-dispatch-workflow`; `deploy-stack` runs the
+- **Phase handoff (wired).** `cloud-app.yml`'s `bootstrap` job dispatches
+  `bootstrap.yml` via `cloudapp-dispatch-workflow`; `deploy-stack` runs the
   bootstrap stack under the bootstrap identity and returns the RG + plan/apply
   client-ids; the deploy job logs in as the plan id (plan-only) or apply id and
   runs the main stack. Remaining gap: docker build still logs in with

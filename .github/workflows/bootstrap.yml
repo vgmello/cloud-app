@@ -1,0 +1,69 @@
+name: bootstrap
+# Phase 1 of the split deploy (internal dispatch target). Dispatched by the
+# cloud-app.yml reusable workflow's bootstrap job. Runs the bootstrap stack in
+# the control repo (RG + plan/apply identities federated to the caller) and
+# returns the RG + identity client-ids as the deployment outputs artifact. The
+# caller then runs the resource deploy (cloud-app.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Caller repository name
+        required: true
+      manifest:
+        description: Path to the cloud-app manifest in the caller repo
+        required: false
+        default: .cloud-app.yml
+      stack_name:
+        description: Stack name (must match the manifest name)
+        required: true
+        default: cloud-app
+      branch:
+        description: Caller ref to read the manifest from
+        required: false
+        default: main
+      env:
+        description: Target environment
+        required: false
+        default: dev
+      plan_only:
+        description: Plan the bootstrap without applying
+        required: false
+        default: "false"
+
+permissions:
+  contents: write # the deploy-stack gate pushes lock updates to the registry
+  id-token: write # OIDC login as the bootstrap identity
+
+jobs:
+  bootstrap:
+    name: Bootstrap ${{ inputs.stack_name }} (${{ inputs.env }})
+    runs-on: ubuntu-latest
+    concurrency:
+      group: bootstrap-${{ inputs.env }}-${{ inputs.stack_name }}
+      cancel-in-progress: false
+    steps:
+      # Needed so `uses: ./.github/actions/deploy-stack` resolves.
+      - name: Checkout control repo
+        uses: actions/checkout@v4
+
+      - name: Generate App Token for Caller Repo
+        id: caller-app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ inputs.repo }}
+
+      - name: Run bootstrap
+        uses: ./.github/actions/deploy-stack
+        with:
+          caller-repo: ${{ inputs.repo }}
+          stack-file: ${{ inputs.manifest }}
+          stack-name: ${{ inputs.stack_name }}
+          caller-branch: ${{ inputs.branch }}
+          environment: ${{ inputs.env }}
+          github-token: ${{ steps.caller-app-token.outputs.token }}
+          plan-only: ${{ inputs.plan_only }}

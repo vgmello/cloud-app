@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: vgmello/cloud-app/.github/workflows/deploy.yml@main
+    uses: vgmello/cloud-app/.github/workflows/cloud-app.yml@main
     secrets: inherit
     with:
       env: ${{ inputs.environment || 'dev' }}

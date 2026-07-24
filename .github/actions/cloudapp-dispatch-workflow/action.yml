@@ -1,5 +1,5 @@
 name: 'cloudapp-dispatch-workflow'
-description: 'Low-level primitive: generate a GitHub App token, dispatch a target workflow, and poll it to completion. Used internally by the deploy.yml reusable workflow bootstrap job.'
+description: 'Low-level primitive: generate a GitHub App token, dispatch a target workflow, and poll it to completion. Used internally by the cloud-app.yml reusable workflow bootstrap job.'
 
 inputs:
   app-id:
@@ -39,9 +39,9 @@ inputs:
     required: false
     default: 'cloud-app'
   target-workflow:
-    description: 'Target Workflow Filename (Defaults to "cloud-app.yml")'
+    description: 'Target Workflow Filename (Defaults to "bootstrap.yml")'
     required: false
-    default: 'cloud-app.yml'
+    default: 'bootstrap.yml'
   target-branch:
     description: 'Branch of target-repo to execute workflow from'
     required: false

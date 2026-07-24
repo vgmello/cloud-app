@@ -13,7 +13,7 @@ Two files are all an app repo needs:
 ## How it works
 
 1. Merge to `main` (or run the workflow manually and pick an environment).
-2. the reusable `deploy.yml` dispatches the control repo, which triggers
+2. the reusable `cloud-app.yml` (their `deploy.yml` calls it) dispatches the control repo, which triggers
    the control repo's deploy workflow under **its** identity — this repo never
    holds deploy-capable credentials.
 3. The control repo's stack-lock registry

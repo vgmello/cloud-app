@@ -41,7 +41,7 @@ An app repo deploys a stack by calling the reusable workflow:
 ```yaml
 jobs:
   deploy:
-    uses: <owner>/cloud-app/.github/workflows/deploy.yml@main
+    uses: <owner>/cloud-app/.github/workflows/cloud-app.yml@main
     secrets: inherit
     with:
       env: staging

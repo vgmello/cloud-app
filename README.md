@@ -34,7 +34,7 @@ on:
 permissions: { contents: read, id-token: write }
 jobs:
   deploy:
-    uses: vgmello/cloud-app/.github/workflows/deploy.yml@v1
+    uses: vgmello/cloud-app/.github/workflows/cloud-app.yml@v1
     secrets: inherit
     with:
       env: dev
@@ -53,7 +53,7 @@ The trust & identity model — the split topology (control bootstraps, caller de
 | `terraform/schema/cloud-app.schema.json` | Manifest JSON Schema                                                                                                                          |
 | `engine/cloudapp/`                       | Python package with all action logic (validate, merge, normalize, build, secrets, deploy)                                                     |
 | `.github/actions/`                       | Composite actions — thin `python3 -m cloudapp` adapters                                                                                       |
-| `.github/workflows/deploy.yml`           | Reusable deploy workflow (`workflow_call`)                                                                                                    |
+| `.github/workflows/cloud-app.yml`         | Reusable deploy workflow (clients call this) (`workflow_call`)                                                                                                    |
 | `terraform/azure/`                       | Root module + compute (`container-app`, `function`, `static-site`) and shared (`keyvault`, `database`, `storage`, `private-endpoint`) modules |
 | `environments/`                          | Per-environment platform config (subscription, VNet, DNS zones, ACR, state, deploy SP)                                                        |
 | `docs/superpowers/specs/`                | Design spec                                                                                                                                   |
