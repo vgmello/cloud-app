@@ -1,0 +1,12 @@
+name: codefn
+functions:
+  worker:
+    runtime: python:3.11
+    package: ./scripts
+  builder:
+    runtime: dotnet-isolated:8.0
+    docker: { file: ./Dockerfile.build }
+  legacy:
+    image: myacr.azurecr.io/legacy:1.0
+environments:
+  dev: {}

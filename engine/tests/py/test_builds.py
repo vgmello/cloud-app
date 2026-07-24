@@ -11,6 +11,7 @@ from cloudapp import builds, manifest
         ("full", "prod", "orders-api"),
         ("multi", "dev", "billing"),
         ("partial", "dev", "partial"),
+        ("codefn", "dev", "codefn"),
     ],
 )
 def test_build_plan_matches_golden(fixture, env, name):
