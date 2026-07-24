@@ -40,6 +40,11 @@ def _write_json(path, data):
 
 def cmd_parse_manifest(args):
     name, environments, tools, docker = manifest.parse(args.manifest, args.app_root)
+    code_functions = any(
+        manifest.function_mode(f) == "code"
+        for tool in tools.values()
+        for f in (tool.get("functions") or {}).values()
+    )
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
     for stale in list(out.glob("tool.*.json")) + [out / "outputs.txt"]:
@@ -52,6 +57,7 @@ def cmd_parse_manifest(args):
             "name": name,
             "environments": json.dumps(environments, separators=(",", ":")),
             "docker": str(docker).lower(),
+            "code_functions": str(code_functions).lower(),
         },
         fallback_file=out / "outputs.txt",
     )

@@ -56,6 +56,9 @@ outputs:
   name:
     description: Resolved stack name (manifest name)
     value: ${{ steps.parse.outputs.name }}
+  code_functions:
+    description: Whether any environment declares a code (runtime) function
+    value: ${{ steps.parse.outputs.code_functions }}
   manifest_changed:
     description: Whether the manifest changed since the previous commit (true if it could not be determined)
     value: ${{ steps.detect.outputs.manifest_changed }}
@@ -360,6 +363,24 @@ runs:
         --targets ""
         --stack main
         ${{ inputs.plan_only == 'true' && '--plan-only' || '' }}
+
+    # Code (non-container) functions deploy their zip after apply, via the SCM
+    # endpoint. Runs on the caller's runner — in production a VNet self-hosted
+    # runner that can reach the private SCM endpoint. Independent of the apply
+    # gate: a code change on an unchanged manifest still needs the zip pushed.
+    - name: Deploy code functions
+      if: ${{ inputs.plan_only == 'false' && steps.parse.outputs.code_functions == 'true' }}
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp deploy-functions
+        --terraform-dir "${{ github.action_path }}/../../../terraform/azure"
+        --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
+        --tool-name "${{ steps.parse.outputs.name }}"
+        --environment "$DEPLOY_ENV"
+        --platform-file "${{ steps.platform.outputs.file }}"
 
     - name: Write summary
       shell: bash
