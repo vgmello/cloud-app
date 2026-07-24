@@ -249,6 +249,20 @@ runs:
         --tool-name "${{ steps.parse.outputs.name }}"
         --environment "$DEPLOY_ENV"
 
+    # Stage caller-supplied Terraform into the platform's custom child module.
+    # No-op when the manifest has no `terraform:` field. Runs before any
+    # terraform init so the staged files are part of the module from the start.
+    - name: Prepare custom terraform
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp prepare-custom-tf
+        --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
+        --app-root "."
+        --custom-dir "${{ github.action_path }}/../../../terraform/azure/custom"
+
     - name: Resolve config
       id: resolve
       shell: bash

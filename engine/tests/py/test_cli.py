@@ -230,3 +230,59 @@ def test_rotate_images_cli_invokes_az_per_image(tmp_path, monkeypatch, capsys):
     assert calls[0][:3] == ["az", "containerapp", "update"]
     assert "ca-orders-api-dev" in calls[0]
     assert "reg/orders-api/main-main:sha1" in calls[0]
+
+
+def test_prepare_custom_tf_stages_caller_files(tmp_path):
+    app_root = tmp_path / "app"
+    (app_root / "terraform").mkdir(parents=True)
+    (app_root / "terraform" / "queue.tf").write_text('resource "random_pet" "p" {}\n')
+
+    tool_json = tmp_path / "tool.dev.json"
+    tool_json.write_text(json.dumps({
+        "name": "orders",
+        "terraform": {
+            "dir": "./terraform",
+            "providers": [{"name": "random", "source": "hashicorp/random", "version": "~> 3"}],
+        },
+    }))
+
+    custom = tmp_path / "custom"
+    custom.mkdir()
+
+    rc = cli.main([
+        "prepare-custom-tf",
+        "--tool-json", str(tool_json),
+        "--app-root", str(app_root),
+        "--custom-dir", str(custom),
+    ])
+
+    assert rc == 0
+    assert (custom / "queue.tf").exists()
+    assert "hashicorp/random" in (custom / "_providers.g.tf").read_text()
+
+
+def test_prepare_custom_tf_reports_error_for_bad_provider(tmp_path):
+    app_root = tmp_path / "app"
+    (app_root / "terraform").mkdir(parents=True)
+    (app_root / "terraform" / "q.tf").write_text("# empty\n")
+
+    tool_json = tmp_path / "tool.dev.json"
+    tool_json.write_text(json.dumps({
+        "name": "orders",
+        "terraform": {
+            "dir": "./terraform",
+            "providers": [{"name": "aws", "source": "hashicorp/aws", "version": "~> 5"}],
+        },
+    }))
+
+    custom = tmp_path / "custom"
+    custom.mkdir()
+
+    rc = cli.main([
+        "prepare-custom-tf",
+        "--tool-json", str(tool_json),
+        "--app-root", str(app_root),
+        "--custom-dir", str(custom),
+    ])
+
+    assert rc == 1
