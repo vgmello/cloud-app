@@ -26,14 +26,16 @@ def prepare(platform_path, tool, tool_name, env, image_tags_json, plan_only,
     if plan_only and not tags:
         registry = (platform.get("acr") or {}).get("login_server", "acr.invalid")
         tags = builds.enumerate_builds(tool, tool_name, registry, "plan-placeholder")["tags"]
+    # Runner allowlisting applies only to the main stack; the bootstrap module
+    # declares no runner_ip variable.
     runner_ip = None
-    if platform.get("runner_access") == "public-allowlist":
+    if stack == "main" and platform.get("runner_access") == "public-allowlist":
         runner_ip = fetch_ip()
     return backend_lines, tags, runner_ip
 
 
 def deploy(tf_dir, tfvars_file, backend_lines, tags, runner_ip, env, plan_only,
-           targets=(), run=runner.run, sleep=time.sleep):
+           targets=(), stack="main", run=runner.run, sleep=time.sleep):
     """init + plan (+ apply with one retry). Returns the summary line."""
     tf = ["terraform", f"-chdir={tf_dir}"]
 
@@ -49,13 +51,13 @@ def deploy(tf_dir, tfvars_file, backend_lines, tags, runner_ip, env, plan_only,
 
     terraform(["init", "-input=false"] + [f"-backend-config={line}" for line in backend_lines])
 
-    args = [
-        "-input=false",
-        f"-var-file={Path(tfvars_file).resolve()}",
-        "-var", f"image_tags={json.dumps(tags, separators=(',', ':'))}",
-    ]
-    if runner_ip:
-        args += ["-var", f"runner_ip={runner_ip}"]
+    args = ["-input=false", f"-var-file={Path(tfvars_file).resolve()}"]
+    # image_tags / runner_ip are main-stack variables; the bootstrap module
+    # takes only its -var-file, so never pass them there.
+    if stack == "main":
+        args += ["-var", f"image_tags={json.dumps(tags, separators=(',', ':'))}"]
+        if runner_ip:
+            args += ["-var", f"runner_ip={runner_ip}"]
     for target in targets:
         args.append(f"-target={target}")
 

@@ -106,7 +106,7 @@ runs:
 
         # Dispatch Inputs (Mapped automatically by dispatch_and_wait.py)
         INPUT_REPO: ${{ steps.prepare-inputs.outputs.caller_repo }}
-        INPUT_STACK_FILE: ${{ inputs.stack-file }}
+        INPUT_MANIFEST: ${{ inputs.stack-file }}
         INPUT_STACK_NAME: ${{ inputs.stack-name }}
         INPUT_BRANCH: ${{ inputs.branch }}
         INPUT_ENV: ${{ inputs.env }}

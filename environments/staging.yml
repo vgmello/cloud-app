@@ -20,6 +20,7 @@ state_backend:
   resource_group: rg-tfstate
   storage_account: sttfstatestaging
   container: tfstate
+bootstrap_identity_client_id: 00000000-0000-0000-0000-000000000000
 deploy:
   client_id: 00000000-0000-0000-0000-000000000000
 runner_access: public-allowlist

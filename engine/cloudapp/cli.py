@@ -92,6 +92,7 @@ def cmd_terraform_deploy(args):
     summary = tfdeploy.deploy(
         args.terraform_dir, args.tfvars_file, backend_lines, tags, runner_ip,
         args.environment, args.plan_only, targets=args.targets.split(),
+        stack=args.stack,
     )
     gha.write_outputs({"summary": summary})
 

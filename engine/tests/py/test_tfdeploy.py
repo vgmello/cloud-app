@@ -70,9 +70,26 @@ def test_apply_retries_once_after_failure():
     assert len(run.commands("terraform", "-chdir=terraform", "plan")) == 2
 
 
-def test_prepare_bootstrap_stack_uses_bootstrap_state_key():
-    lines, _, _ = tfdeploy.prepare(
+def test_prepare_bootstrap_stack_uses_bootstrap_state_key_and_skips_runner_ip():
+    lines, _, runner_ip = tfdeploy.prepare(
         ENVDIR / "dev.yml", tool(), "orders-api", "dev",
-        "{}", plan_only=False, stack="bootstrap", fetch_ip=lambda: None,
+        "{}", plan_only=False, stack="bootstrap", fetch_ip=lambda: "9.9.9.9",
     )
     assert any(line == "key=orders-api/dev.bootstrap.tfstate" for line in lines)
+    # dev.yml is public-allowlist, but bootstrap must never allowlist the runner
+    # (the bootstrap module declares no runner_ip variable).
+    assert runner_ip is None
+
+
+def test_bootstrap_deploy_omits_image_tags_and_runner_ip():
+    run = FakeRunner()
+    summary = tfdeploy.deploy(
+        "terraform/azure/bootstrap", "tfvars.json", ["key=a/b.bootstrap.tfstate"],
+        {}, None, "dev", plan_only=False, stack="bootstrap", run=run, sleep=lambda s: None,
+    )
+    assert summary == "applied dev"
+    (plan,) = run.commands("terraform", "-chdir=terraform/azure/bootstrap", "plan")
+    joined = " ".join(plan)
+    assert "image_tags=" not in joined
+    assert "runner_ip=" not in joined
+    assert "-var-file=" in joined

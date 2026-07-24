@@ -1,5 +1,5 @@
 name: 'deploy-stack'
-description: 'Authorize a caller repo against the stack-lock registry, then deploy its manifest through the cloudapp pipeline for one environment.'
+description: 'Phase 1 (control repo): authorize a caller against the stack-lock registry, then run the bootstrap stack under the bootstrap identity — creating the resource group and the plan/apply identities federated to the caller. Outputs the RG + identity client-ids for the caller to run the resource deploy.'
 
 inputs:
   caller-repo:
@@ -13,7 +13,7 @@ inputs:
     description: 'Stack name (state key prefix); must match the manifest name'
     required: true
   caller-branch:
-    description: 'Ref of the caller repo to deploy'
+    description: 'Ref of the caller repo'
     required: false
     default: 'main'
   environment:
@@ -24,7 +24,7 @@ inputs:
     description: 'Token scoped to the caller repo (used to check it out)'
     required: true
   plan-only:
-    description: 'Plan without applying'
+    description: 'Plan the bootstrap stack without applying'
     required: false
     default: 'false'
 
@@ -53,8 +53,7 @@ runs:
       run: python3 -m pip install --user -q -r central-workspace/engine/requirements.txt
 
     # Authorization gate: verifies the manifest name matches stack-name and that
-    # this caller owns the stack in the registry (trust-on-first-use). Fails the
-    # job before any deploy if the caller is not authorized.
+    # this caller owns the stack in the registry (trust-on-first-use).
     - name: Validate stack ownership
       shell: bash
       env:
@@ -64,6 +63,8 @@ runs:
         CALLER_REPO: ${{ github.repository_owner }}/${{ inputs.caller-repo }}
       run: python3 central-workspace/.github/scripts/validate_and_lock.py
 
+    # Parse validates the manifest and produces tool.<env>.json (terraform-deploy
+    # requires a --tool-json even for the bootstrap stack).
     - name: Parse manifest
       shell: bash
       env:
@@ -74,39 +75,60 @@ runs:
         --output-dir .cloud-app
         --app-root caller-workspace
 
-    - name: Resolve config
+    - name: Read bootstrap identity
+      id: bootstrap-id
+      shell: bash
+      run: |
+        FILE="central-workspace/environments/${{ inputs.environment }}.yml"
+        {
+          echo "client_id=$(yq '.bootstrap_identity_client_id' "$FILE")"
+          echo "tenant_id=$(yq '.tenant_id' "$FILE")"
+          echo "subscription_id=$(yq '.subscription_id' "$FILE")"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Azure login (bootstrap identity)
+      uses: azure/login@v2
+      with:
+        client-id: ${{ steps.bootstrap-id.outputs.client_id }}
+        tenant-id: ${{ steps.bootstrap-id.outputs.tenant_id }}
+        subscription-id: ${{ steps.bootstrap-id.outputs.subscription_id }}
+
+    # Bootstrap tfvars: name, env, subscription, location, and the plan/apply
+    # OIDC subjects federated to the CALLER repo (delegated mode).
+    - name: Build bootstrap tfvars
       shell: bash
       env:
         PYTHONPATH: central-workspace/engine
       run: >-
-        python3 -m cloudapp resolve-config
-        --tool-json ".cloud-app/tool.${{ inputs.environment }}.json"
-        --platform-file "central-workspace/environments/${{ inputs.environment }}.yml"
+        python3 -m cloudapp bootstrap-vars
+        --name "${{ inputs.stack-name }}"
         --environment "${{ inputs.environment }}"
-        --out-file tfvars.json
+        --mode delegated
+        --app-repo "${{ github.repository_owner }}/${{ inputs.caller-repo }}"
+        --central-repo "${{ github.repository }}"
+        --platform-file "central-workspace/environments/${{ inputs.environment }}.yml"
+        > bootstrap-tfvars.json
 
-    # NOTE: Azure/AWS OIDC login for the plan/apply identity is the pending
-    # trust-identity wiring (see docs/trust-modes.md, "Not yet wired"); this
-    # step assumes the job has already authenticated to the state backend and
-    # resource plane.
-    - name: Terraform deploy
+    - name: Terraform bootstrap
       id: deploy
       shell: bash
       env:
         PYTHONPATH: central-workspace/engine
       run: >-
         python3 -m cloudapp terraform-deploy
-        --terraform-dir central-workspace/terraform/azure
-        --tfvars-file tfvars.json
+        --stack bootstrap
+        --terraform-dir central-workspace/terraform/azure/bootstrap
+        --tfvars-file bootstrap-tfvars.json
         --tool-json ".cloud-app/tool.${{ inputs.environment }}.json"
         --tool-name "${{ inputs.stack-name }}"
         --environment "${{ inputs.environment }}"
         --platform-file "central-workspace/environments/${{ inputs.environment }}.yml"
         ${{ inputs.plan-only == 'true' && '--plan-only' || '' }}
 
-    # Capture results even when a step above failed, so the caller always gets a
-    # plan, the terraform outputs, and a status summary.
-    - name: Collect deployment outputs
+    # Capture the bootstrap results (RG + plan/apply identity client-ids) so the
+    # caller can run the resource deploy under those identities. Runs even on
+    # failure so the caller always gets a status.
+    - name: Collect bootstrap outputs
       if: always()
       shell: bash
       env:
@@ -115,34 +137,33 @@ runs:
         DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
       run: |
         mkdir -p outputs
-        TF_DIR=central-workspace/terraform/azure
+        TF_DIR=central-workspace/terraform/azure/bootstrap
 
-        # tf plan text (present after the deploy step planned)
         if [ -f "$TF_DIR/tfplan" ]; then
           terraform -chdir="$TF_DIR" show -no-color tfplan > outputs/tf-plan.txt 2>/dev/null || true
         fi
 
-        # tf outputs (only present after a successful apply)
         terraform -chdir="$TF_DIR" output -json > outputs/tf-outputs.json 2>/dev/null \
           || echo '{}' > outputs/tf-outputs.json
 
-        # first app FQDN as the deployment URL, if the apply produced one
-        FQDN=$(jq -r '(.app_fqdns.value // {}) | to_entries | (.[0].value // "")' outputs/tf-outputs.json 2>/dev/null || echo "")
-        URL=""
-        [ -n "$FQDN" ] && URL="https://$FQDN"
+        RG=$(jq -r '.resource_group_name.value // ""' outputs/tf-outputs.json 2>/dev/null || echo "")
+        PLAN_ID=$(jq -r '.plan_identity_client_id.value // ""' outputs/tf-outputs.json 2>/dev/null || echo "")
+        APPLY_ID=$(jq -r '.apply_identity_client_id.value // ""' outputs/tf-outputs.json 2>/dev/null || echo "")
 
         jq -n \
           --arg stack "$STACK_NAME" \
           --arg env "$TARGET_ENV" \
-          --arg url "$URL" \
+          --arg rg "$RG" \
+          --arg plan "$PLAN_ID" \
+          --arg apply "$APPLY_ID" \
           --arg at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
           --arg status "${DEPLOY_OUTCOME:-unknown}" \
-          '{stack_name: $stack, environment: $env, deployment_url: $url, deployed_at: $at, status: $status}' \
+          '{stack_name: $stack, environment: $env, resource_group: $rg, plan_client_id: $plan, apply_client_id: $apply, deployed_at: $at, status: $status}' \
           > outputs/deployment-results.json
 
-        echo "### Deployment: $STACK_NAME ($TARGET_ENV) — ${DEPLOY_OUTCOME:-unknown}" >> "$GITHUB_STEP_SUMMARY"
+        echo "### Bootstrap: $STACK_NAME ($TARGET_ENV) — ${DEPLOY_OUTCOME:-unknown}" >> "$GITHUB_STEP_SUMMARY"
 
-    - name: Upload deployment outputs
+    - name: Upload bootstrap outputs
       if: always()
       uses: actions/upload-artifact@v4
       with:
