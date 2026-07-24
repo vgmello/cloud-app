@@ -4,15 +4,13 @@ How the platform authenticates to Azure, isolates privilege across deploy
 phases, and lets untrusted repos deploy without holding deploy-capable
 credentials.
 
-> **Status — not yet active in the deploy workflow.** The building blocks below
-> are implemented and unit-tested (backend rendering, federation-subject
-> resolution, login sequencing, dispatch payload/allowlist, and both Terraform
-> bootstrap stacks). They are **not yet wired into `deploy.yml`**: the running
-> deploy workflow still authenticates with the single `deploy.client_id`
-> identity and applies the main stack directly. Until the wiring lands (tracked
-> under "Not yet wired" at the bottom), self/delegated modes and the three-tier
-> identities describe the intended model, not the current runtime behavior. Do
-> not rely on the delegated boundary for isolation yet.
+> **Status — wired, not yet validated against live Azure.** The split topology
+> is now implemented end to end: `cloud-app.yml` runs the bootstrap in the
+> control repo (federating plan/apply to the caller), and the caller `deploy.yml`
+> dispatches it, then runs the resource deploy under the RG-scoped plan/apply
+> identities. It has **not** been run against a real subscription — OIDC token
+> exchange and RBAC propagation after the identities are minted still need a
+> sandbox run before relying on the boundary.
 
 ## Three deploy identities
 
@@ -125,19 +123,13 @@ automated on deploy.
 The logic and Terraform stacks are built and unit-tested, but these connecting
 pieces are not implemented yet:
 
-- **`deploy.yml` phase handoff** — the four deploy jobs still do one
-  `azure/login` and one main-stack apply. They do not yet run
-  `login-plan`, the bootstrap→plan→apply login sequence, or `--stack bootstrap`.
-- **Delegated dispatch** — the full round-trip exists: the trigger side
-  (`.github/actions/cloud-app` -> `cloudapp-dispatch-workflow` + `dispatch_and_wait.py`) and the
-  target side (`.github/workflows/cloud-app.yml` → `deploy-stack`, which checks
-  out the central repo and the caller repo, runs the stack-ownership gate
-  (`validate_and_lock.py`), then parse→resolve→terraform-deploy). Caller
-  authorization is enforced by the lock registry
-  (`registries/<env>/<stack>.yml`, trust-on-first-use). The one remaining gap:
-  `deploy-stack` does not yet perform the OIDC login as the plan/apply identity —
-  it assumes the job has already authenticated to the state backend and resource
-  plane.
+- **Phase handoff (wired).** `deploy.yml`'s `bootstrap` job dispatches
+  `cloud-app.yml` via `cloudapp-dispatch-workflow`; `deploy-stack` runs the
+  bootstrap stack under the bootstrap identity and returns the RG + plan/apply
+  client-ids; the deploy job logs in as the plan id (plan-only) or apply id and
+  runs the main stack. Remaining gap: docker build still logs in with
+  `deploy.client_id` (ACR is shared, outside the tool RG — a separate identity
+  concern), and the AWS-state two-login path is not exercised.
 
   (The `cloudapp.dispatch.authorize` helper is a code-level allowlist alternative
   to the registry gate; the registry is the mechanism actually wired in.)

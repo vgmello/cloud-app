@@ -36,17 +36,18 @@ registered_at: 2026-07-24T12:00:00Z
 
 ## Caller usage
 
-An app repo triggers a delegated deploy with the dispatch action:
+An app repo deploys a stack by calling the reusable workflow:
 
 ```yaml
-- name: Deploy Staging Stack
-  uses: <owner>/cloud-app/.github/actions/cloud-app@main
-  with:
-    app-id: ${{ vars.APP_ID }}
-    app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
-    branch: 'feature/v2-migration'
-    env: 'staging'
+jobs:
+  deploy:
+    uses: <owner>/cloud-app/.github/workflows/deploy.yml@main
+    secrets: inherit
+    with:
+      env: staging
+      stack_name: orders-api
 ```
 
-`repo` and `stack-name` default to the caller repository name and `cloud-app`;
-override them when the manifest name or target stack differ.
+The workflow dispatches the control repo to bootstrap the stack (creating the
+RG + plan/apply identities federated to this repo), then runs the resource
+deploy under those identities. `stack_name` must match the manifest name.

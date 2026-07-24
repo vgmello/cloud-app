@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
     inputs:
       environment:
@@ -13,14 +14,13 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch deploy to control plane
-        uses: vgmello/cloud-app/.github/actions/cloud-app@main
-        with:
-          app-id: ${{ vars.DEPLOY_APP_ID }}
-          app-private-key: ${{ secrets.DEPLOY_APP_KEY }}
-          env: ${{ inputs.environment || 'dev' }}
+    uses: vgmello/cloud-app/.github/workflows/deploy.yml@main
+    secrets: inherit
+    with:
+      env: ${{ inputs.environment || 'dev' }}
+      stack_name: orders-api
+      plan_only: ${{ github.event_name == 'pull_request' }}

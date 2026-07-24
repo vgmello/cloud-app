@@ -40,6 +40,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Phase 1: dispatch the control repo to run the bootstrap (RG + plan/apply
+  # identities federated to this repo) and return the RG-scoped client-ids.
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      plan_client_id: ${{ steps.dispatch.outputs.plan_client_id }}
+      apply_client_id: ${{ steps.dispatch.outputs.apply_client_id }}
+      resource_group: ${{ steps.dispatch.outputs.resource_group }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: vgmello/cloud-app
+          ref: ${{ inputs.repo_ref }}
+          path: .deploy
+
+      - id: dispatch
+        uses: ./.deploy/.github/actions/cloudapp-dispatch-workflow
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repo: ${{ github.event.repository.name }}
+          stack-file: ${{ inputs.manifest }}
+          stack-name: ${{ inputs.stack_name }}
+          branch: ${{ github.ref_name }}
+          env: ${{ inputs.env }}
+
   setup:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -132,7 +159,7 @@ jobs:
           git-sha: ${{ github.sha }}
 
   deploy:
-    needs: [setup, build]
+    needs: [setup, build, bootstrap]
     if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -175,9 +202,11 @@ jobs:
             echo "keyvault=$KV"
           } >> "$GITHUB_OUTPUT"
 
+      # Log in as the RG-scoped identity bootstrap federated to this repo:
+      # plan (Reader) for plan-only, apply (Contributor) otherwise.
       - uses: azure/login@v2
         with:
-          client-id: ${{ steps.platform.outputs.client_id }}
+          client-id: ${{ inputs.plan_only && needs.bootstrap.outputs.plan_client_id || needs.bootstrap.outputs.apply_client_id }}
           tenant-id: ${{ steps.platform.outputs.tenant_id }}
           subscription-id: ${{ steps.platform.outputs.subscription_id }}
 

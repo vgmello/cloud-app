@@ -1,5 +1,5 @@
 name: 'cloudapp-dispatch-workflow'
-description: 'Low-level primitive: generate a GitHub App token, dispatch a target workflow, and poll it to completion. Use the `cloud-app` action instead unless you need to pass the stack name explicitly.'
+description: 'Low-level primitive: generate a GitHub App token, dispatch a target workflow, and poll it to completion. Used internally by the deploy.yml reusable workflow bootstrap job.'
 
 inputs:
   app-id:
@@ -48,21 +48,29 @@ inputs:
     default: 'main'
 
 outputs:
-  deployment_url:
-    description: 'URL of the deployed app, if the target produced one'
-    value: ${{ steps.dispatch.outputs.deployment_url }}
   status:
-    description: 'Outcome of the target deploy step'
+    description: 'Outcome of the target run'
     value: ${{ steps.dispatch.outputs.status }}
   deployed_at:
-    description: 'UTC timestamp of the target deployment'
+    description: 'UTC timestamp of the target run'
     value: ${{ steps.dispatch.outputs.deployed_at }}
   stack_name:
-    description: 'Deployed stack name'
+    description: 'Stack name'
     value: ${{ steps.dispatch.outputs.stack_name }}
   environment:
     description: 'Target environment'
     value: ${{ steps.dispatch.outputs.environment }}
+  # Bootstrap outputs (Phase 1): the RG and the RG-scoped identity client-ids the
+  # caller uses to run the resource deploy.
+  resource_group:
+    description: 'Resource group created by the bootstrap'
+    value: ${{ steps.dispatch.outputs.resource_group }}
+  plan_client_id:
+    description: 'Client id of the plan identity (Reader)'
+    value: ${{ steps.dispatch.outputs.plan_client_id }}
+  apply_client_id:
+    description: 'Client id of the apply identity (Contributor)'
+    value: ${{ steps.dispatch.outputs.apply_client_id }}
 
 runs:
   using: 'composite'
