@@ -85,7 +85,26 @@ def _normalize_app(app):
         normalized["ingress"] = ingress
     normalized["replicas"] = deep_merge(REPLICA_DEFAULTS, app.get("replicas", {}))
     normalized["containers"] = containers
+    if "databases" in app:
+        normalized["databases"] = app["databases"]
     return normalized
+
+
+def validate_db_refs(cfg):
+    """Raise if any app/function databases ref names an undeclared server or db."""
+    declared = {k: set(v["dbs"]) for k, v in cfg.get("databases", {}).items()}
+    for section in ("apps", "functions"):
+        for owner, entry in (cfg.get(section) or {}).items():
+            for ref in entry.get("databases", []):
+                server, _, db = ref.partition("/")
+                if server not in declared:
+                    raise ManifestError(
+                        f"{section}/{owner} references unknown database server in '{ref}'"
+                    )
+                if db not in declared[server]:
+                    raise ManifestError(
+                        f"{section}/{owner} references unknown database in '{ref}'"
+                    )
 
 
 def normalize(merged):
@@ -102,9 +121,26 @@ def normalize(merged):
         if section in cfg:
             defaults = _load_yaml(DEFAULTS_DIR / f"{defaults_file}.yml")
             cfg[section] = {k: deep_merge(defaults, v) for k, v in cfg[section].items()}
-    for section in ("database", "storage"):
-        if section in cfg:
-            cfg[section] = deep_merge(_load_yaml(DEFAULTS_DIR / f"{section}.yml"), cfg[section])
+    if "database" in cfg and "databases" in cfg:
+        raise ManifestError(
+            "manifest mixes singular database with databases; use one form"
+        )
+    db_defaults = _load_yaml(DEFAULTS_DIR / "database.yml")
+    if "database" in cfg:
+        merged_db = deep_merge(db_defaults, cfg.pop("database"))
+        merged_db.setdefault("dbs", ["main"])
+        cfg["databases"] = {"main": merged_db}
+        cfg["database_legacy"] = True
+    elif "databases" in cfg:
+        entries = {}
+        for k, v in cfg["databases"].items():
+            merged = deep_merge(db_defaults, v)
+            merged.setdefault("dbs", ["main"])
+            entries[k] = merged
+        cfg["databases"] = entries
+    if "storage" in cfg:
+        cfg["storage"] = deep_merge(_load_yaml(DEFAULTS_DIR / "storage.yml"), cfg["storage"])
+    validate_db_refs(cfg)
     return cfg
 
 

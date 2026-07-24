@@ -22,7 +22,7 @@ run "naming" {
     error_message = "single app must dedupe to the manifest name"
   }
   assert {
-    condition     = output.names.database == null && output.names.storage == null
+    condition     = length(output.names.databases) == 0 && output.names.storage == null
     error_message = "no database/storage section means no names"
   }
 }

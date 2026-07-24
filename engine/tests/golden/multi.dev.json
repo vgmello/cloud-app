@@ -16,28 +16,34 @@
         "web": {
           "cpu": 0.5,
           "memory": "1Gi",
+          "env": {},
+          "secrets": [],
           "docker": {
             "file": "./web/Dockerfile"
-          },
-          "env": {},
-          "secrets": []
+          }
         },
         "proxy": {
           "cpu": 0.25,
           "memory": "0.5Gi",
-          "image": "nginx:1.27",
           "env": {
             "MODE": "sidecar"
           },
-          "secrets": []
+          "secrets": [],
+          "image": "nginx:1.27"
         }
       }
     }
   },
-  "database": {
-    "type": "sqlserver",
-    "size": "medium",
-    "storage_gb": 32,
-    "public_access": false
-  }
+  "databases": {
+    "main": {
+      "type": "sqlserver",
+      "size": "medium",
+      "storage_gb": 32,
+      "public_access": false,
+      "dbs": [
+        "main"
+      ]
+    }
+  },
+  "database_legacy": true
 }

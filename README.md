@@ -65,7 +65,8 @@ The trust & identity model — three deploy identities, self/delegated modes, st
   are shorthand that folds into `containers.main`.
 - `ingress` is `public` / `internal` / `none`, or an object mirroring the
   Terraform ingress block.
-- `database.type` is `postgres` (default) or `sqlserver`.
+- `database.type` is `postgres` (default) or `sqlserver`. Need more than one
+  database? Use the plural `databases:` map instead, with per-app opt-in.
 - Everything is private by default; opt out with `public_access: true` or
   `ingress: public`.
 - Per-environment overrides live under `environments.<env>` and deep-merge.

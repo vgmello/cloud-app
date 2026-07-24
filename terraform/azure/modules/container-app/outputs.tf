@@ -14,3 +14,8 @@ output "container_images" {
   description = "Resolved image per container, for plan assertions"
   value       = { for c in azurerm_container_app.this.template[0].container : c.name => c.image }
 }
+
+output "extra_secret_env" {
+  description = "Reserved env var -> Key Vault secret name wired into every container"
+  value       = var.extra_secret_env
+}

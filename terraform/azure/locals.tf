@@ -8,7 +8,8 @@ locals {
   apps         = try(local.cfg.apps, {})
   functions    = try(local.cfg.functions, {})
   static_sites = try(local.cfg.static_sites, {})
-  database     = try(local.cfg.database, null)
+  databases    = try(local.cfg.databases, {})
+  db_legacy    = try(local.cfg.database_legacy, false)
   storage      = try(local.cfg.storage, null)
 
   # entry base name: explicit name > manifest name (single entry) > manifest name + key
@@ -32,16 +33,46 @@ locals {
   rg_name = "rg-${local.base}-${local.env}"
   kv_name = trimsuffix(substr("kv-${local.base}-${local.env}", 0, 24), "-")
   st_name = substr("st${replace("${local.base}${local.env}", "-", "")}", 0, 24)
-  db_name = local.database == null ? null : (
-    local.database.type == "postgres" ? "psql-${local.base}-${local.env}" : "sql-${local.base}-${local.env}"
-  )
+
+  db_server_bases = {
+    for k, v in local.databases :
+    k => coalesce(try(v.name, null), length(local.databases) == 1 ? local.base : "${local.base}-${k}")
+  }
+  db_names = {
+    for k, v in local.databases :
+    k => v.type == "postgres" ? "psql-${local.db_server_bases[k]}-${local.env}" : "sql-${local.db_server_bases[k]}-${local.env}"
+  }
+  db_secret_names = {
+    for sk, sv in local.databases :
+    sk => {
+      for db in sv.dbs :
+      db => local.db_legacy ? "database-url" : "database-url-${sk}-${db}"
+    }
+  }
 
   acr_name = split(".", local.platform.acr.login_server)[0]
   acr_id   = "/subscriptions/${local.platform.subscription_id}/resourceGroups/${local.platform.acr.resource_group}/providers/Microsoft.ContainerRegistry/registries/${local.acr_name}"
 
   # reserved env var -> Key Vault secret name wiring for platform-generated secrets
-  shared_secret_env = merge(
-    local.database != null ? { DATABASE_URL = "database-url" } : {},
-    local.storage != null ? { STORAGE_CONNECTION = "storage-connection" } : {},
-  )
+  storage_secret_env = local.storage != null ? { STORAGE_CONNECTION = "storage-connection" } : {}
+
+  db_blanket_env = local.db_legacy ? { DATABASE_URL = "database-url" } : {}
+
+  per_app_db_env = {
+    for ak, av in local.apps :
+    ak => local.db_legacy ? local.db_blanket_env : {
+      for ref in try(av.databases, []) :
+      "${upper(replace(split("/", ref)[0], "-", "_"))}_${upper(replace(split("/", ref)[1], "-", "_"))}_DATABASE_URL"
+      => local.db_secret_names[split("/", ref)[0]][split("/", ref)[1]]
+    }
+  }
+
+  per_function_db_env = {
+    for fk, fv in local.functions :
+    fk => local.db_legacy ? local.db_blanket_env : {
+      for ref in try(fv.databases, []) :
+      "${upper(replace(split("/", ref)[0], "-", "_"))}_${upper(replace(split("/", ref)[1], "-", "_"))}_DATABASE_URL"
+      => local.db_secret_names[split("/", ref)[0]][split("/", ref)[1]]
+    }
+  }
 }

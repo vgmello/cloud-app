@@ -3,7 +3,7 @@ import pytest
 from cloudapp import manifest
 from conftest import FIXTURES, load_golden, load_manifest
 
-VALID = ["minimal", "full", "multi", "partial"]
+VALID = ["minimal", "full", "multi", "partial", "databases"]
 INVALID = [
     "invalid-missing-name",
     "invalid-legacy-type",
@@ -16,6 +16,7 @@ INVALID = [
     "invalid-image-and-docker",
     "invalid-function-image-docker",
     "invalid-env-number",
+    "invalid-database-and-databases",
 ]
 
 
@@ -38,6 +39,8 @@ def test_invalid_manifests_fail_schema(name):
         ("multi", "dev", "multi.dev"),
         ("partial", "dev", "partial.dev"),
         ("partial", "prod", "partial.prod"),
+        ("databases", "dev", "databases.dev"),
+        ("databases", "prod", "databases.prod"),
     ],
 )
 def test_normalized_tool_matches_golden(name, env, golden):
@@ -64,6 +67,11 @@ def test_app_shorthand_folds_into_apps_main():
 def test_overlay_app_mixed_with_base_apps_fails():
     with pytest.raises(manifest.ManifestError, match="mixes singular app"):
         manifest.parse(FIXTURES / "invalid-overlay-app-mix.yml")
+
+
+def test_database_and_databases_via_overlay_raises():
+    with pytest.raises(manifest.ManifestError, match="mixes singular database with databases"):
+        manifest.parse(FIXTURES / "invalid-db-overlay-mix.yml")
 
 
 def test_invalid_manifest_raises_with_schema_errors():
@@ -110,3 +118,36 @@ def test_partial_ingress_object_fills_defaults_and_port():
         "transport": "http2",
         "allow_insecure": False,
     }
+
+
+def test_legacy_database_folds_into_databases_main():
+    _, _, tools, _ = manifest.parse(FIXTURES / "full.yml")
+    cfg = tools["dev"]
+    assert "database" not in cfg
+    assert list(cfg["databases"]) == ["main"]
+    assert cfg["databases"]["main"]["dbs"] == ["main"]
+    assert cfg["database_legacy"] is True
+
+
+def test_databases_entry_defaults_dbs_to_main():
+    _, _, tools, _ = manifest.parse(FIXTURES / "databases.yml")
+    assert tools["dev"]["databases"]["reporting"]["dbs"] == ["main"]
+    assert "database_legacy" not in tools["dev"]
+
+
+def test_databases_merges_entry_defaults():
+    _, _, tools, _ = manifest.parse(FIXTURES / "databases.yml")
+    primary = tools["dev"]["databases"]["primary"]
+    assert primary["type"] == "postgres"
+    assert primary["storage_gb"] == 32
+    assert primary["public_access"] is False
+
+
+def test_unknown_db_server_ref_raises():
+    with pytest.raises(manifest.ManifestError, match="ghost/main"):
+        manifest.parse(FIXTURES / "invalid-db-ref-server.yml")
+
+
+def test_unknown_db_name_ref_raises():
+    with pytest.raises(manifest.ManifestError, match="primary/ghost"):
+        manifest.parse(FIXTURES / "invalid-db-ref-name.yml")

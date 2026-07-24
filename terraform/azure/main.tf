@@ -17,19 +17,29 @@ module "keyvault" {
 }
 
 module "database" {
-  source = "./modules/shared/database"
-  count  = local.database != null ? 1 : 0
+  source   = "./modules/shared/database"
+  for_each = local.databases
 
-  name                        = local.db_name
-  type                        = local.database.type
-  size                        = local.database.size
-  storage_gb                  = local.database.storage_gb
-  public_access               = local.database.public_access
+  name                        = local.db_names[each.key]
+  type                        = each.value.type
+  size                        = each.value.size
+  storage_gb                  = each.value.storage_gb
+  public_access               = each.value.public_access
+  dbs                         = local.db_secret_names[each.key]
   location                    = local.platform.location
   resource_group_name         = azurerm_resource_group.this.name
   keyvault_id                 = module.keyvault.id
   private_endpoints_subnet_id = local.platform.network.subnets.private_endpoints
-  private_dns_zone_id         = local.database.type == "postgres" ? local.platform.network.private_dns_zone_ids.postgres : local.platform.network.private_dns_zone_ids.sqlserver
+  private_dns_zone_id         = each.value.type == "postgres" ? local.platform.network.private_dns_zone_ids.postgres : local.platform.network.private_dns_zone_ids.sqlserver
+}
+
+# Legacy single-database deployments (singular `database:` manifest, normalized to
+# server key "main") were provisioned when module.database was count-gated ([0]).
+# This block moves existing state in place instead of destroying/recreating on
+# upgrade to the for_each-keyed module. No-op for fresh deploys or non-legacy state.
+moved {
+  from = module.database[0]
+  to   = module.database["main"]
 }
 
 module "storage" {
@@ -61,7 +71,7 @@ module "container_app" {
   acr_id                        = local.acr_id
   keyvault_id                   = module.keyvault.id
   keyvault_vault_uri            = module.keyvault.vault_uri
-  extra_secret_env              = local.shared_secret_env
+  extra_secret_env              = merge(local.storage_secret_env, local.per_app_db_env[each.key])
 
   depends_on = [module.database, module.storage]
 }
@@ -78,7 +88,7 @@ module "function" {
   acr_id              = local.acr_id
   keyvault_id         = module.keyvault.id
   keyvault_vault_uri  = module.keyvault.vault_uri
-  extra_secret_env    = local.shared_secret_env
+  extra_secret_env    = merge(local.storage_secret_env, local.per_function_db_env[each.key])
   functions_subnet_id = local.platform.network.subnets.functions
 
   depends_on = [module.database, module.storage]

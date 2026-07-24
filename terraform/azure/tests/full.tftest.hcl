@@ -22,7 +22,7 @@ run "naming" {
     error_message = "single function must dedupe to the manifest name"
   }
   assert {
-    condition     = output.names.database == "psql-orders-api-prod"
+    condition     = output.names.databases["main"] == "psql-orders-api-prod"
     error_message = "postgres database must use the psql- prefix"
   }
   assert {
@@ -35,12 +35,12 @@ run "postgres_and_storage" {
   command = plan
 
   assert {
-    condition     = module.database[0].server_name == "psql-orders-api-prod"
+    condition     = module.database["main"].server_name == "psql-orders-api-prod"
     error_message = "postgres module must receive the psql- name"
   }
   assert {
-    condition     = module.database[0].secret_env.DATABASE_URL == "database-url"
-    error_message = "database must expose the reserved database-url secret wiring"
+    condition     = module.database["main"].secret_names["main"] == "database-url"
+    error_message = "legacy database must expose the reserved database-url secret wiring"
   }
   assert {
     condition     = module.storage[0].secret_env.STORAGE_CONNECTION == "storage-connection"

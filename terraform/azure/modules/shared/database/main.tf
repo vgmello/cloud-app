@@ -5,11 +5,14 @@ locals {
   is_postgres = var.type == "postgres"
   fqdn        = local.is_postgres ? "${var.name}.postgres.database.azure.com" : "${var.name}.database.windows.net"
 
-  connection_string = local.is_postgres ? (
-    "postgresql://dbadmin:${random_password.admin.result}@${local.fqdn}:5432/main?sslmode=require"
-    ) : (
-    "Server=tcp:${local.fqdn},1433;Database=main;User ID=dbadmin;Password=${random_password.admin.result};Encrypt=true;"
-  )
+  connection_strings = {
+    for db, _ in var.dbs :
+    db => local.is_postgres ? (
+      "postgresql://dbadmin:${random_password.admin.result}@${local.fqdn}:5432/${db}?sslmode=require"
+      ) : (
+      "Server=tcp:${local.fqdn},1433;Database=${db};User ID=dbadmin;Password=${random_password.admin.result};Encrypt=true;"
+    )
+  }
 }
 
 resource "random_password" "admin" {
@@ -33,9 +36,9 @@ resource "azurerm_postgresql_flexible_server" "this" {
 }
 
 resource "azurerm_postgresql_flexible_server_database" "this" {
-  count = local.is_postgres ? 1 : 0
+  for_each = local.is_postgres ? var.dbs : {}
 
-  name      = "main"
+  name      = each.key
   server_id = azurerm_postgresql_flexible_server.this[0].id
   charset   = "UTF8"
   collation = "en_US.utf8"
@@ -55,9 +58,9 @@ resource "azurerm_mssql_server" "this" {
 }
 
 resource "azurerm_mssql_database" "this" {
-  count = local.is_postgres ? 0 : 1
+  for_each = local.is_postgres ? {} : var.dbs
 
-  name        = "main"
+  name        = each.key
   server_id   = azurerm_mssql_server.this[0].id
   sku_name    = local.sql_sku[var.size]
   max_size_gb = var.storage_gb
@@ -77,7 +80,30 @@ module "private_endpoint" {
 }
 
 resource "azurerm_key_vault_secret" "database_url" {
-  name         = "database-url"
-  value        = local.connection_string
+  for_each = var.dbs
+
+  name         = each.value
+  value        = local.connection_strings[each.key]
   key_vault_id = var.keyvault_id
+}
+
+# Legacy single-database deployments (singular `database:` manifest, normalized to
+# logical db "main") were provisioned when these resources were count-gated ([0]) or
+# a single unindexed resource. These blocks move existing state in place instead of
+# destroying/recreating on upgrade to the for_each-keyed resources. No-ops for fresh
+# deploys or when the legacy server used the other engine (e.g. mssql db absent when
+# the legacy server was postgres).
+moved {
+  from = azurerm_postgresql_flexible_server_database.this[0]
+  to   = azurerm_postgresql_flexible_server_database.this["main"]
+}
+
+moved {
+  from = azurerm_mssql_database.this[0]
+  to   = azurerm_mssql_database.this["main"]
+}
+
+moved {
+  from = azurerm_key_vault_secret.database_url
+  to   = azurerm_key_vault_secret.database_url["main"]
 }

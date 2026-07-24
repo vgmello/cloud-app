@@ -43,3 +43,8 @@ variable "private_endpoints_subnet_id" {
 variable "private_dns_zone_id" {
   type = string
 }
+
+variable "dbs" {
+  description = "Logical database name -> Key Vault secret name"
+  type        = map(string)
+}
