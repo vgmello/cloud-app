@@ -54,6 +54,10 @@ jobs:
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
+Set a `concurrency:` group per environment (as the sample workflow does) so
+overlapping deploys to the same stack and environment serialize rather than
+racing Terraform state.
+
 The action dispatches the control repo to bootstrap the stack (creating the
 RG + plan/apply identities federated to this repo), then runs the resource
 deploy under those identities. The stack name is the manifest `name:` — the

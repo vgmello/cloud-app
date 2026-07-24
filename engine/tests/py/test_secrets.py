@@ -104,6 +104,10 @@ def test_parse_pairs_multiple_and_blank_lines():
     assert secrets.parse_pairs(text) == {"A": "1", "B": "two=parts"}
 
 
+def test_parse_pairs_empty_value():
+    assert secrets.parse_pairs("NAME=") == {"NAME": ""}
+
+
 def test_parse_pairs_missing_equals_raises():
     with pytest.raises(secrets.SyncError):
         secrets.parse_pairs("NOT_A_PAIR")

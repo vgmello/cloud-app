@@ -32,10 +32,14 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: cloud-app-${{ github.repository }}-dev-${{ github.event_name == 'pull_request' && 'plan' || 'apply' }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'dev' }}
+    environment: dev
     steps:
       - uses: actions/checkout@v4
       - uses: vgmello/cloud-app/.github/actions/cloud-app@v1

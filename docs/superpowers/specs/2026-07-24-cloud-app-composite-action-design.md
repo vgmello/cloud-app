@@ -221,6 +221,10 @@ engine), `terraform/`, `environments/`.
   scoping.
 - Caller must keep `app-secrets` in sync with the manifest `secrets:` list;
   fail-fast on a missing name limits the blast radius of drift.
+- Concurrency serialization moves to the caller: a composite action cannot
+  declare `concurrency:`, so the caller's workflow must set a per-environment
+  `concurrency:` group (the sample does). Callers copying older snippets
+  without it can race overlapping applies.
 
 ## Testing
 
