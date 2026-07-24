@@ -69,6 +69,11 @@ def test_overlay_app_mixed_with_base_apps_fails():
         manifest.parse(FIXTURES / "invalid-overlay-app-mix.yml")
 
 
+def test_database_and_databases_via_overlay_raises():
+    with pytest.raises(manifest.ManifestError, match="mixes singular database with databases"):
+        manifest.parse(FIXTURES / "invalid-db-overlay-mix.yml")
+
+
 def test_invalid_manifest_raises_with_schema_errors():
     with pytest.raises(manifest.ManifestError, match="validation failed"):
         manifest.parse(FIXTURES / "invalid-legacy-type.yml")

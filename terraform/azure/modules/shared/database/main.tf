@@ -86,3 +86,24 @@ resource "azurerm_key_vault_secret" "database_url" {
   value        = local.connection_strings[each.key]
   key_vault_id = var.keyvault_id
 }
+
+# Legacy single-database deployments (singular `database:` manifest, normalized to
+# logical db "main") were provisioned when these resources were count-gated ([0]) or
+# a single unindexed resource. These blocks move existing state in place instead of
+# destroying/recreating on upgrade to the for_each-keyed resources. No-ops for fresh
+# deploys or when the legacy server used the other engine (e.g. mssql db absent when
+# the legacy server was postgres).
+moved {
+  from = azurerm_postgresql_flexible_server_database.this[0]
+  to   = azurerm_postgresql_flexible_server_database.this["main"]
+}
+
+moved {
+  from = azurerm_mssql_database.this[0]
+  to   = azurerm_mssql_database.this["main"]
+}
+
+moved {
+  from = azurerm_key_vault_secret.database_url
+  to   = azurerm_key_vault_secret.database_url["main"]
+}

@@ -1,0 +1,14 @@
+name: shop
+
+app:
+  port: 8080
+
+database:
+  size: small
+
+environments:
+  dev: {}
+  prod:
+    databases:
+      extra:
+        type: postgres

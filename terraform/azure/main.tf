@@ -33,6 +33,15 @@ module "database" {
   private_dns_zone_id         = each.value.type == "postgres" ? local.platform.network.private_dns_zone_ids.postgres : local.platform.network.private_dns_zone_ids.sqlserver
 }
 
+# Legacy single-database deployments (singular `database:` manifest, normalized to
+# server key "main") were provisioned when module.database was count-gated ([0]).
+# This block moves existing state in place instead of destroying/recreating on
+# upgrade to the for_each-keyed module. No-op for fresh deploys or non-legacy state.
+moved {
+  from = module.database[0]
+  to   = module.database["main"]
+}
+
 module "storage" {
   source = "./modules/shared/storage"
   count  = local.storage != null ? 1 : 0
