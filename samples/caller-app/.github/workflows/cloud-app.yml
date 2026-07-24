@@ -23,8 +23,6 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # The approval gate lives here now — the OIDC subject the RG-scoped plan/apply
-    # identities trust is repo:<this>:environment:<env>.
     environment: ${{ inputs.environment || 'dev' }}
     steps:
       - uses: actions/checkout@v4
