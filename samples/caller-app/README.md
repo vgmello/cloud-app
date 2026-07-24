@@ -5,10 +5,10 @@ without owning any Terraform, Azure identity, or deploy credentials.
 
 Two files are all an app repo needs:
 
-| File                           | Purpose                                                       |
-| ------------------------------ | ------------------------------------------------------------- |
-| `.cloud-app.yml`                | The stack manifest — what to deploy (apps, database, secrets) |
-| `.github/workflows/deploy.yml` | Dispatches the deploy to the control repo (`vgmello/cloud-app`)  |
+| File                           | Purpose                                                         |
+| ------------------------------ | --------------------------------------------------------------- |
+| `.cloud-app.yml`               | The stack manifest — what to deploy (apps, database, secrets)   |
+| `.github/workflows/deploy.yml` | Dispatches the deploy to the control repo (`vgmello/cloud-app`) |
 
 ## How it works
 
@@ -28,7 +28,8 @@ Two files are all an app repo needs:
 - Copy both files to your repo root / `.github/workflows/`.
 - Set the manifest `name:` and the workflow `stack-name:` to your stack (they
   must match).
-- Add repo variables/secrets: `DEPLOY_APP_ID`, `DEPLOY_APP_KEY`.
+- Add repo secrets `APP_ID` and `APP_PRIVATE_KEY` (the GitHub App installed on
+  the control repo); `secrets: inherit` passes them to the reusable workflow.
 
 > This folder is a template. Its `.github/workflows/deploy.yml` is inert here —
 > GitHub only runs workflows from a repo's own root `.github/workflows/`.

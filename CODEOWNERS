@@ -3,5 +3,12 @@
 
 # The manifest contract and its consumers change together — extra scrutiny.
 /terraform/schema/ @vgmello
-/cloudapp/ @vgmello
+/engine/cloudapp/ @vgmello
 /.github/ @vgmello
+
+# Security-sensitive surfaces — identity, workflows, bootstrap, and the lock gate.
+/engine/cloudapp/identity.py @vgmello
+/.github/scripts/validate_and_lock.py @vgmello
+/terraform/azure/bootstrap/ @vgmello
+/terraform/azure/subscription-bootstrap/ @vgmello
+/registries/ @vgmello

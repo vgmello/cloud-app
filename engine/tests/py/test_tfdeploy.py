@@ -55,12 +55,13 @@ def test_apply_passes_image_tags_and_runner_ip_and_targets():
     assert len(run.commands("terraform", "-chdir=terraform", "apply")) == 1
 
 
-def test_apply_retries_once_after_failure():
+def test_apply_retries_once_after_transient_authz_failure():
     attempts = []
 
     def apply_result(cmd):
         attempts.append(cmd)
-        return FakeResult(1 if len(attempts) == 1 else 0)
+        # first attempt: a transient RBAC-propagation error; second: success
+        return FakeResult(1, stderr="AuthorizationFailed: not authorized") if len(attempts) == 1 else FakeResult(0)
 
     sleeps = []
     run = FakeRunner([(("terraform", "-chdir=terraform", "apply"), apply_result)])
@@ -68,6 +69,17 @@ def test_apply_retries_once_after_failure():
     assert len(attempts) == 2
     assert sleeps == [30]
     assert len(run.commands("terraform", "-chdir=terraform", "plan")) == 2
+
+
+def test_apply_non_transient_error_fails_immediately():
+    run = FakeRunner([
+        (("terraform", "-chdir=terraform", "apply"), FakeResult(1, stderr="Error: quota exceeded")),
+    ])
+    with pytest.raises(tfdeploy.DeployError):
+        deploy(run)
+    # no retry, no second plan
+    assert len(run.commands("terraform", "-chdir=terraform", "apply")) == 1
+    assert len(run.commands("terraform", "-chdir=terraform", "plan")) == 1
 
 
 def test_prepare_bootstrap_stack_uses_bootstrap_state_key_and_skips_runner_ip():

@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -10,7 +11,32 @@ STACK_FILE = os.environ["STACK_FILE"]
 EXPECTED_STACK_NAME = os.environ["EXPECTED_STACK_NAME"]
 CALLER_REPO = os.environ["CALLER_REPO"]
 
-stack_path = f"caller-workspace/{STACK_FILE}"
+# All four inputs are caller-controlled (they flow from the dispatch). Validate
+# them BEFORE building any path, so a hostile value (e.g. `../` traversal or a
+# newline) can never be interpolated into a file read, registry write, or git
+# command. These run on the powerful central-repo token, so this is the gate.
+_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")  # env / stack name: kebab, no separators
+_REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+def _fail(msg):
+    print(f"::error::{msg}")
+    sys.exit(1)
+
+
+if not _NAME_RE.match(ENV):
+    _fail(f"invalid environment name '{ENV}'")
+if not _NAME_RE.match(EXPECTED_STACK_NAME):
+    _fail(f"invalid stack name '{EXPECTED_STACK_NAME}'")
+if not _REPO_RE.match(CALLER_REPO):
+    _fail(f"invalid caller repo '{CALLER_REPO}'")
+
+# The manifest path must resolve to a file inside the caller workspace.
+_caller_root = os.path.realpath("caller-workspace")
+stack_path = os.path.realpath(os.path.join(_caller_root, STACK_FILE))
+if os.path.isabs(STACK_FILE) or (stack_path != _caller_root and not stack_path.startswith(_caller_root + os.sep)):
+    _fail(f"stack file '{STACK_FILE}' escapes the caller workspace")
+
 registry_dir = f"central-workspace/registries/{ENV}"
 registry_path = f"{registry_dir}/{EXPECTED_STACK_NAME}.yml"
 

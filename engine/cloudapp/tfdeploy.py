@@ -12,9 +12,24 @@ from .yamlcompat import load_yaml
 
 PLAN_FILE = "tfplan"
 
+# Substrings that mark a transient authorization failure — a fresh RBAC grant
+# that has not propagated yet. Only these are worth the retry; quota, policy,
+# and configuration errors are terminal and must surface immediately.
+_TRANSIENT_APPLY_ERRORS = (
+    "authorizationfailed",
+    "does not have authorization",
+    "authorizationpermissionmismatch",
+    "linkedauthorizationfailed",
+)
+
 
 class DeployError(Exception):
     pass
+
+
+def _is_transient_authz(text):
+    lowered = (text or "").lower()
+    return any(marker in lowered for marker in _TRANSIENT_APPLY_ERRORS)
 
 
 def prepare(platform_path, tool, tool_name, env, image_tags_json, plan_only,
@@ -76,9 +91,14 @@ def deploy(tf_dir, tfvars_file, backend_lines, tags, runner_ip, env, plan_only,
         return f"plan only ({env})"
 
     apply_args = ["apply", "-input=false", PLAN_FILE]
-    if run(tf + apply_args, check=False).returncode != 0:
-        gha.warning("apply failed; retrying once in 30s (RBAC propagation)")
+    result = run(tf + apply_args, capture=True, check=False)
+    if result.returncode != 0:
+        output = (result.stdout or "") + (result.stderr or "")
+        if not _is_transient_authz(output):
+            print(output)
+            raise DeployError(f"terraform apply failed for environment '{env}'")
+        gha.warning("apply hit a transient authorization error; retrying once in 30s (RBAC propagation)")
         sleep(30)
         plan()
-        terraform(apply_args)
+        terraform(apply_args)  # surfaces output and raises DeployError if it fails again
     return f"applied {env}"

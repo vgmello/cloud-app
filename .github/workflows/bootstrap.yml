@@ -40,6 +40,10 @@ jobs:
   bootstrap:
     name: Bootstrap ${{ inputs.stack_name }} (${{ inputs.env }})
     runs-on: ubuntu-latest
+    # Job environment so the OIDC subject is `repo:<control>:environment:<env>` —
+    # which is exactly what the bootstrap identity's federated credential trusts.
+    # Without it GitHub issues a ref-based subject and azure/login would fail.
+    environment: ${{ inputs.env }}
     concurrency:
       group: bootstrap-${{ inputs.env }}-${{ inputs.stack_name }}
       cancel-in-progress: false

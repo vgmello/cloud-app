@@ -80,3 +80,31 @@ def test_missing_name_falls_back_to_input(tmp_path):
     r = run(tmp_path, "dev", ".cloud-app.yml", "orders", "acme/orders")
     assert r.returncode == 0
     assert "authorized" in r.stdout
+
+
+def test_traversal_stack_name_rejected(tmp_path):
+    setup_workspace(tmp_path, manifest_name="orders")
+    r = run(tmp_path, "dev", ".cloud-app.yml", "../../evil", "acme/orders")
+    assert r.returncode == 1
+    assert "invalid stack name" in r.stdout
+
+
+def test_traversal_env_rejected(tmp_path):
+    setup_workspace(tmp_path, manifest_name="orders")
+    r = run(tmp_path, "../../etc", ".cloud-app.yml", "orders", "acme/orders")
+    assert r.returncode == 1
+    assert "invalid environment" in r.stdout
+
+
+def test_traversal_stack_file_rejected(tmp_path):
+    setup_workspace(tmp_path, manifest_name="orders")
+    r = run(tmp_path, "dev", "../../../etc/passwd", "orders", "acme/orders")
+    assert r.returncode == 1
+    assert "escapes the caller workspace" in r.stdout
+
+
+def test_malformed_caller_repo_rejected(tmp_path):
+    setup_workspace(tmp_path, manifest_name="orders")
+    r = run(tmp_path, "dev", ".cloud-app.yml", "orders", "no-slash-here")
+    assert r.returncode == 1
+    assert "invalid caller repo" in r.stdout

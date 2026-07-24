@@ -37,8 +37,10 @@ jobs:
     uses: vgmello/cloud-app/.github/workflows/cloud-app.yml@v1
     secrets: inherit
     with:
+      env: dev
+      stack_name: orders-api
       plan_only: ${{ github.event_name == 'pull_request' }}
-      deploy_ref: v1 # keep in lockstep with the @v1 pin above
+      repo_ref: v1 # keep in lockstep with the @v1 pin above
 ```
 
 ## 3. Configure GitHub environments
