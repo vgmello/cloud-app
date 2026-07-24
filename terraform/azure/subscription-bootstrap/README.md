@@ -2,14 +2,18 @@
 
 A subscription **Owner** runs this stack one time per environment. It creates
 the `cloudapp-bootstrap` custom role, the shared `id-cloudapp-bootstrap-<env>`
-identity, its role assignment, and a federated credential trusting the trusted
-repo's `environment:<env>` subject.
+identity, its role assignment, a federated credential trusting the trusted
+repo's `environment:<env>` subject, and (when a state account is given) the
+bootstrap identity's Storage Blob Data Contributor grant on the tfstate
+container so it can store its own `bootstrap.tfstate`.
 
 ```bash
 terraform -chdir=terraform/azure/subscription-bootstrap init
 terraform -chdir=terraform/azure/subscription-bootstrap apply \
   -var subscription_id=<sub> -var location=eastus2 \
-  -var environment=dev -var trusted_repo=vgmello/cloud-app
+  -var environment=dev -var trusted_repo=vgmello/cloud-app \
+  -var state_account_id=/subscriptions/<sub>/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/<acct> \
+  -var state_container=tfstate
 ```
 
 Record `bootstrap_identity_client_id` in `environments/<env>.yml` as

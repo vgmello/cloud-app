@@ -82,3 +82,21 @@ resource "azurerm_federated_identity_credential" "bootstrap" {
   issuer    = "https://token.actions.githubusercontent.com"
   subject   = "repo:${var.trusted_repo}:environment:${var.environment}"
 }
+
+# The bootstrap identity stores its own bootstrap.tfstate in the state container,
+# so it needs data-plane write there (outside the tool RGs it manages). Scoped to
+# the container when known, else the account. Skipped when no state account given.
+locals {
+  state_scope = (
+    var.state_account_id == "" ? "" :
+    var.state_container == "" ? var.state_account_id :
+    "${var.state_account_id}/blobServices/default/containers/${var.state_container}"
+  )
+}
+
+resource "azurerm_role_assignment" "bootstrap_state" {
+  count                = local.state_scope == "" ? 0 : 1
+  scope                = local.state_scope
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.bootstrap.principal_id
+}

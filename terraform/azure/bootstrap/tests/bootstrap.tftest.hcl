@@ -36,6 +36,32 @@ run "identities_and_scoped_roles" {
     condition     = length(azurerm_role_assignment.apply_acr_push) == 0
     error_message = "no ACR push grant when acr_id is empty"
   }
+  assert {
+    condition     = length(azurerm_role_assignment.plan_state) == 0 && length(azurerm_role_assignment.apply_state) == 0
+    error_message = "no state-container grants when state_account_id is empty"
+  }
+}
+
+run "state_container_grants" {
+  command = plan
+
+  variables {
+    state_account_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstateprod"
+    state_container  = "tfstate"
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.plan_state[0].role_definition_name == "Storage Blob Data Reader"
+    error_message = "plan identity must read the state container"
+  }
+  assert {
+    condition     = azurerm_role_assignment.apply_state[0].role_definition_name == "Storage Blob Data Contributor"
+    error_message = "apply identity must read+write the state container"
+  }
+  assert {
+    condition     = strcontains(azurerm_role_assignment.apply_state[0].scope, "/blobServices/default/containers/tfstate")
+    error_message = "state grant must be scoped to the tfstate container"
+  }
 }
 
 run "acr_push_scoped_to_repo_namespace" {

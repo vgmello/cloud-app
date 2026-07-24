@@ -5,6 +5,14 @@ provider "azurerm" {
 
 locals {
   rg = "rg-${var.name}-${var.environment}"
+
+  # Scope the state-container grants to the container when known, else the
+  # account. Empty string disables them (e.g. s3 backend).
+  state_scope = (
+    var.state_account_id == "" ? "" :
+    var.state_container == "" ? var.state_account_id :
+    "${var.state_account_id}/blobServices/default/containers/${var.state_container}"
+  )
 }
 
 resource "azurerm_resource_group" "this" {
@@ -47,6 +55,22 @@ resource "azurerm_role_assignment" "plan_kv" {
 resource "azurerm_role_assignment" "apply_contributor" {
   scope                = azurerm_resource_group.this.id
   role_definition_name = "Contributor"
+  principal_id         = azurerm_user_assigned_identity.apply.principal_id
+}
+
+# tfstate data-plane access (state store lives outside the tool RG): plan reads
+# the main state, apply reads+writes it. Skipped when state_scope is empty.
+resource "azurerm_role_assignment" "plan_state" {
+  count                = local.state_scope == "" ? 0 : 1
+  scope                = local.state_scope
+  role_definition_name = "Storage Blob Data Reader"
+  principal_id         = azurerm_user_assigned_identity.plan.principal_id
+}
+
+resource "azurerm_role_assignment" "apply_state" {
+  count                = local.state_scope == "" ? 0 : 1
+  scope                = local.state_scope
+  role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.apply.principal_id
 }
 

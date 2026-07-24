@@ -163,9 +163,12 @@ state_backend:
 - **azurerm** — reached via `azure/login` OIDC (`use_oidc`, `use_azuread_auth`).
   The state store lives in `rg-tfstate`, outside the tool RG, so the identities
   need data-plane grants **on the state container**: bootstrap+apply → Storage
-  Blob Data Contributor, plan → Storage Blob Data Reader. These grants are
-  **not yet created by any committed stack** (see "Not yet wired") — the manual
-  `terraform/azure/subscription-bootstrap/` stack is the intended home for the bootstrap grant.
+  Blob Data Contributor, plan → Storage Blob Data Reader. These are now created
+  automatically, scoped to the tfstate container: the per-tool bootstrap stack
+  grants plan (Reader) and apply (Contributor); the manual
+  `terraform/azure/subscription-bootstrap/` stack grants the bootstrap identity
+  (Contributor) for its own `bootstrap.tfstate`. Both take the state account id
+  from `state_backend` (via `bootstrap-vars`) and are skipped for s3.
 - **s3** — reached via `AssumeRoleWithWebIdentity` into `role_arn`. Resources
   stay Azure; the AWS login authorizes only the state backend, so an S3 run
   performs two OIDC logins (AWS for state, Azure for the plan/apply identity).
@@ -197,8 +200,10 @@ pieces are not implemented yet:
   (The `cloudapp.dispatch.authorize` helper is a code-level allowlist alternative
   to the registry gate; the registry is the mechanism actually wired in.)
 
-- **State-container role assignments** — the data-plane grants described above
-  are not created by any committed stack.
+- **State-container role assignments (wired).** The bootstrap stacks now create
+  the tfstate data-plane grants (plan Reader, apply/bootstrap Contributor),
+  scoped to the container. Still needs a live run to confirm RBAC propagates
+  before the first `terraform init`.
 - **Bootstrap role ABAC** — the bootstrap role assignment constrains
   `roleAssignments/write` to a fixed set of role-definition GUIDs (Reader,
   Contributor, Storage Blob Data Reader/Contributor, Key Vault Reader) via an

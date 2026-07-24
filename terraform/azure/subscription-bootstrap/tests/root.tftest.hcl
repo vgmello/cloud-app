@@ -40,4 +40,27 @@ run "custom_role_is_exactly_the_seven_capabilities" {
     condition     = azurerm_federated_identity_credential.bootstrap.subject == "repo:vgmello/cloud-app:environment:dev"
     error_message = "bootstrap federation subject must trust the trusted repo environment"
   }
+
+  assert {
+    condition     = length(azurerm_role_assignment.bootstrap_state) == 0
+    error_message = "no bootstrap state grant when state_account_id is empty"
+  }
+}
+
+run "bootstrap_identity_gets_state_write" {
+  command = plan
+
+  variables {
+    state_account_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstatedev"
+    state_container  = "tfstate"
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.bootstrap_state[0].role_definition_name == "Storage Blob Data Contributor"
+    error_message = "bootstrap identity must read+write the state container"
+  }
+  assert {
+    condition     = strcontains(azurerm_role_assignment.bootstrap_state[0].scope, "/blobServices/default/containers/tfstate")
+    error_message = "bootstrap state grant must be scoped to the tfstate container"
+  }
 }

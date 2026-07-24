@@ -107,6 +107,16 @@ def cmd_bootstrap_vars(args):
     for field in ("subscription_id", "location"):
         if not platform.get(field):
             raise ValueError(f"{field} missing in {args.platform_file}")
+    # Azure Blob state account id, so bootstrap can grant the plan/apply
+    # identities data-plane access to the tfstate container. Empty for s3.
+    state = platform.get("state_backend") or {}
+    state_account_id = ""
+    if state.get("type") == "azurerm" and state.get("storage_account") and state.get("resource_group"):
+        state_account_id = (
+            f"/subscriptions/{platform['subscription_id']}"
+            f"/resourceGroups/{state['resource_group']}"
+            f"/providers/Microsoft.Storage/storageAccounts/{state['storage_account']}"
+        )
     out = {
         "name": args.name,
         "environment": args.environment,
@@ -115,6 +125,8 @@ def cmd_bootstrap_vars(args):
         # Optional: the shared ABAC-enabled ACR id enables the repo-scoped push
         # grant in the bootstrap stack. Empty when not configured.
         "acr_id": (platform.get("acr") or {}).get("id", ""),
+        "state_account_id": state_account_id,
+        "state_container": state.get("container", "") if state_account_id else "",
         "plan_subjects": identity.federation_subjects(
             "plan", args.mode, args.app_repo, args.central_repo, args.environment
         ),

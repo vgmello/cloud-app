@@ -29,3 +29,15 @@ variable "acr_id" {
   type        = string
   default     = ""
 }
+
+variable "state_account_id" {
+  description = "Resource ID of the Azure Blob tfstate storage account. Empty disables the state-container grants (e.g. s3 backend)."
+  type        = string
+  default     = ""
+}
+
+variable "state_container" {
+  description = "tfstate blob container name. Grants scope to this container when set; to the whole account otherwise."
+  type        = string
+  default     = ""
+}
