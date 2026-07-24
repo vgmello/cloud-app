@@ -41,8 +41,9 @@ inputs:
       Force Terraform (plan + apply) to run on every invocation. When false
       (default), Terraform runs only when the manifest changed since the
       previous commit; on an unchanged manifest the whole Terraform run is
-      skipped and the image is rebuilt and rotated instead (image rotation is a
-      later phase) — a code/Docker change alone does not trigger Terraform. The
+      skipped and the image is rebuilt and rotated directly onto the existing
+      container apps/functions — a code/Docker change alone does not trigger
+      Terraform. The
       default (false) requires the caller to check out with `fetch-depth: 2` so
       the previous commit is available to diff; Terraform also always runs for
       plan-only runs, manual dispatch, first deploys, and when the parent commit

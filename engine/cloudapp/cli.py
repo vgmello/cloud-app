@@ -94,7 +94,7 @@ def cmd_state_exists(args):
 
 def cmd_rotate_images(args):
     tool = _load_json(args.tool_json)
-    platform = load_yaml(Path(args.platform_file).read_text()) or {}
+    platform = _load_platform(args.platform_file)
     prefix = platform.get("naming_prefix") or ""
     image_tags = json.loads(args.image_tags or "{}")
     rotate.rotate(tool, prefix, args.environment, image_tags, args.resource_group, runner.run)
