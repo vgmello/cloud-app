@@ -1,6 +1,6 @@
-"""Unit tests for the pure helpers in the dispatch-and-wait script. The script
-lives outside the cloudapp package (it ships with the composite action), so it's
-loaded by path; main() and its network calls are not exercised here."""
+"""Unit tests for the pure helpers in dispatch_and_wait.py. The script ships with
+the composite action (it lives outside the cloudapp package), so it is loaded by
+path; main() and its network calls are not exercised here."""
 
 import importlib.util
 import io
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).parents[3] / ".github" / "scripts" / "dispatch_and_wait.py"
+SCRIPT = Path(__file__).parents[1] / "dispatch_and_wait.py"
 
 
 @pytest.fixture(scope="module")
@@ -36,6 +36,10 @@ def test_collect_target_inputs_maps_and_filters(dw):
     }
 
 
+def test_collect_target_inputs_empty_when_no_inputs(dw):
+    assert dw.collect_target_inputs({"GH_TOKEN": "secret", "PATH": "/usr/bin"}) == {}
+
+
 def test_build_payload_shape(dw):
     assert dw.build_payload("main", {"env": "dev"}) == {
         "ref": "main",
@@ -56,6 +60,10 @@ def test_pick_artifact_none_when_absent(dw):
     assert dw.pick_artifact([{"name": "deployment-outputs-99"}], 42) is None
 
 
+def test_pick_artifact_none_on_empty_list(dw):
+    assert dw.pick_artifact([], 42) is None
+
+
 def test_extract_results_reads_json_from_zip(dw):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -63,9 +71,21 @@ def test_extract_results_reads_json_from_zip(dw):
     assert dw.extract_results(buf.getvalue()) == {"status": "success", "deployment_url": "https://x"}
 
 
+def test_extract_results_raises_when_member_missing(dw):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("other.json", "{}")
+    with pytest.raises(KeyError):
+        dw.extract_results(buf.getvalue())
+
+
 def test_format_output_lines(dw):
     lines = dw.format_output_lines({"status": "success", "deployment_url": "https://x"})
     assert lines == "status=success\ndeployment_url=https://x\n"
+
+
+def test_format_output_lines_empty(dw):
+    assert dw.format_output_lines({}) == ""
 
 
 def test_render_step_variants(dw):
@@ -73,6 +93,10 @@ def test_render_step_variants(dw):
     assert dw.render_step({"name": "Deploy", "status": "completed", "conclusion": "success"}) == "  [ok] Deploy"
     assert dw.render_step({"name": "Deploy", "status": "completed", "conclusion": "failure"}) == "  [FAILED] Deploy"
     assert dw.render_step({"name": "Deploy", "status": "queued"}) is None
+
+
+def test_render_step_completed_without_conclusion_is_failed(dw):
+    assert dw.render_step({"name": "Deploy", "status": "completed"}) == "  [FAILED] Deploy"
 
 
 def test_step_key_is_unique_per_transition(dw):

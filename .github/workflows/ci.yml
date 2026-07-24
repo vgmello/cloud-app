@@ -28,6 +28,9 @@ jobs:
         working-directory: engine
         run: python3 -m pytest tests/py -q --cov=cloudapp --cov-report=term-missing --cov-fail-under=90
 
+      - name: Script tests
+        run: python3 -m pytest .github/scripts/tests -q
+
       - name: Audit dependencies
         run: pip-audit -r engine/requirements.txt
 
