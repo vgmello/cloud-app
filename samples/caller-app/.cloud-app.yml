@@ -13,6 +13,7 @@ apps:
       context: .
     secrets:
       - STRIPE_KEY # value pulled from the platform Key Vault at deploy time
+      - SENDGRID_API_KEY
 
 database:
   size: small

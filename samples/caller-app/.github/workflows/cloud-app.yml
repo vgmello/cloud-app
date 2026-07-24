@@ -36,3 +36,4 @@ jobs:
           # Enumerate exactly the names your manifest `secrets:` list declares.
           app-secrets: |
             STRIPE_KEY=${{ secrets.STRIPE_KEY }}
+            SENDGRID_API_KEY=${{ secrets.SENDGRID_API_KEY }}
