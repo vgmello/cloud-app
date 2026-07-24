@@ -61,3 +61,51 @@ def test_missing_state_backend_block_fails(tmp_path):
     (tmp_path / "x.yml").write_text("location: eastus2\n")
     with pytest.raises(backend.BackendError, match="state_backend.type"):
         backend.render(tmp_path / "x.yml", "n", "dev")
+
+
+class _Result:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_state_exists_true_probes_deterministic_key():
+    calls = []
+
+    def fake_run(cmd, check=False, capture=False):
+        calls.append(cmd)
+        return _Result(0, "true\n")
+
+    assert backend.state_exists(ENVDIR / "dev.yml", "orders-api", "dev", fake_run) is True
+    assert "orders-api/dev.tfstate" in calls[0]
+    assert "sttfstatedev" in calls[0]
+
+
+def test_state_exists_false_when_blob_absent():
+    def fake_run(cmd, check=False, capture=False):
+        return _Result(0, "false\n")
+
+    assert backend.state_exists(ENVDIR / "dev.yml", "orders-api", "dev", fake_run) is False
+
+
+def test_state_exists_false_on_az_failure():
+    def fake_run(cmd, check=False, capture=False):
+        return _Result(1, "", "auth error")
+
+    assert backend.state_exists(ENVDIR / "dev.yml", "orders-api", "dev", fake_run) is False
+
+
+def test_state_exists_false_and_skips_az_for_non_azurerm(tmp_path):
+    (tmp_path / "prod.yml").write_text(
+        "state_backend:\n  type: s3\n  bucket: b\n  region: us-east-1\n"
+        "  role_arn: arn:aws:iam::123456789012:role/x\n"
+    )
+    called = []
+
+    def fake_run(cmd, check=False, capture=False):
+        called.append(cmd)
+        return _Result(0, "true\n")
+
+    assert backend.state_exists(tmp_path / "prod.yml", "n", "prod", fake_run) is False
+    assert called == []

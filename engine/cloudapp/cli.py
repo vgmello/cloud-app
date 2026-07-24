@@ -86,6 +86,11 @@ def cmd_sync_secrets(args):
     gha.write_outputs(outputs)
 
 
+def cmd_state_exists(args):
+    exists = backend.state_exists(args.platform_file, args.tool_name, args.environment, runner.run)
+    gha.write_outputs({"exists": "true" if exists else "false"})
+
+
 def cmd_terraform_deploy(args):
     tool = _load_json(args.tool_json)
     backend_lines, tags, runner_ip = tfdeploy.prepare(
@@ -213,6 +218,12 @@ def main(argv=None):
     p.add_argument("--keyvault-name", required=True)
     p.add_argument("--require-vault", action="store_true")
     p.set_defaults(func=cmd_sync_secrets)
+
+    p = sub.add_parser("state-exists")
+    p.add_argument("--platform-file", required=True)
+    p.add_argument("--tool-name", required=True)
+    p.add_argument("--environment", required=True)
+    p.set_defaults(func=cmd_state_exists)
 
     p = sub.add_parser("terraform-deploy")
     p.add_argument("--terraform-dir", required=True)

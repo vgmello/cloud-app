@@ -26,6 +26,33 @@ def state_key(name, env, stack="main"):
     return f"{name}/{env}.{suffix}"
 
 
+def state_exists(platform_path, name, env, run, stack="main"):
+    """True if the Terraform state blob for this tool+env already exists.
+
+    A cheap first-deploy signal (one az call, no terraform init) evaluated under
+    the already-logged-in deploy identity. Only azurerm backends are probed; any
+    other backend type returns False, and an az failure returns False, so the
+    caller treats the deploy as first/undetermined and never wrongly skips an
+    apply.
+    """
+    sb = _config(platform_path)
+    if sb["type"] != "azurerm":
+        return False
+    for field in ("storage_account", "container"):
+        if not sb.get(field):
+            raise BackendError(f"state_backend.{field} missing in {platform_path}")
+    result = run(
+        ["az", "storage", "blob", "exists",
+         "--account-name", sb["storage_account"],
+         "--container-name", sb["container"],
+         "--name", state_key(name, env, stack),
+         "--auth-mode", "login",
+         "--query", "exists", "-o", "tsv"],
+        check=False, capture=True,
+    )
+    return result.returncode == 0 and (result.stdout or "").strip().lower() == "true"
+
+
 def render(platform_path, name, env, stack="main"):
     """-backend-config key=value lines for one tool + environment + stack."""
     sb = _config(platform_path)

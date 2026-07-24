@@ -23,13 +23,11 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # The approval gate lives here now — the OIDC subject the RG-scoped plan/apply
-    # identities trust is repo:<this>:environment:<env>.
     environment: ${{ inputs.environment || 'dev' }}
     steps:
-      # Caller checkout: the action reads the manifest and the Dockerfile/context
-      # from this repo.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # terraform_on_manifest_change diffs the manifest against the previous commit
 
       - uses: vgmello/cloud-app/.github/actions/cloud-app@main
         with:
@@ -40,3 +38,4 @@ jobs:
           # Enumerate exactly the names your manifest `secrets:` list declares.
           app-secrets: |
             STRIPE_KEY=${{ secrets.STRIPE_KEY }}
+            SENDGRID_API_KEY=${{ secrets.SENDGRID_API_KEY }}

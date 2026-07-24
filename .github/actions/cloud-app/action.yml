@@ -4,7 +4,10 @@ description: >-
   bootstrap (Phase 1: RG + plan/apply identities federated to this repo), then
   runs the resource deploy under those RG-scoped identities (Phase 2). Invoke
   as a step in a job that sets `environment:` — the OIDC subject the RG-scoped
-  identities trust.
+  identities trust. Prerequisite: the caller repo must already be checked out
+  in the workspace (add `uses: actions/checkout` as a prior step); this action
+  reads the manifest and Dockerfile/context from it and does not check out for
+  you.
 inputs:
   env:
     description: Target environment to deploy (must be declared in the manifest)
@@ -33,10 +36,31 @@ inputs:
   control-ref:
     description: Ref of the control repo to run bootstrap.yml from
     default: main
+  terraform_on_manifest_change:
+    description: >-
+      When true (default), run Terraform (plan + apply) only when the manifest
+      changed since the previous commit. On an unchanged manifest the whole
+      Terraform run is skipped and the image is rebuilt and rotated directly
+      instead (image rotation is a later phase) — a code/Docker change alone
+      does not trigger Terraform. Requires the caller to check out with
+      `fetch-depth: 2` so the previous commit is available to diff. Terraform
+      always runs regardless for plan-only runs, manual dispatch, first deploys,
+      and when the parent commit is unavailable.
+      NOTE: the change signal is the caller's manifest only. A platform-config
+      change (control repo `environments/<env>.yml` — DNS, network, naming) is
+      NOT detected here; roll those out with a manual dispatch or a run with
+      this input set to false.
+    default: "true"
 outputs:
   name:
     description: Resolved stack name (manifest name)
     value: ${{ steps.parse.outputs.name }}
+  manifest_changed:
+    description: Whether the manifest changed since the previous commit (true if it could not be determined)
+    value: ${{ steps.detect.outputs.manifest_changed }}
+  applied:
+    description: Whether the Terraform apply/plan step ran (false when terraform_on_manifest_change skipped it)
+    value: ${{ steps.gate.outputs.should_apply }}
   resource_group:
     description: Resource group created by the bootstrap
     value: ${{ steps.bootstrap.outputs.resource_group }}
@@ -46,6 +70,44 @@ outputs:
 runs:
   using: composite
   steps:
+    # Precondition: this action operates on an already-checked-out workspace and
+    # never checks out for the caller (that would clobber their workspace and
+    # steal ref/token/checkout-option control). Fail fast with an actionable
+    # message if the manifest is absent — the usual cause is a missing checkout.
+    - name: Require caller checkout
+      shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        if [ ! -f "$MANIFEST" ]; then
+          echo "::error::cloud-app: manifest '$MANIFEST' not found in the workspace. Check out the caller repo before this action — add a step 'uses: actions/checkout@v4' ahead of it (and set the 'manifest:' input if your manifest is not at the repo root)."
+          exit 1
+        fi
+
+    # Pure git signal: did the manifest change since the previous commit? Used by
+    # terraform_on_manifest_change. "true" whenever it cannot be proven unchanged (new file, no
+    # parent commit / shallow checkout) so the apply is never skipped on doubt.
+    # Needs the caller to check out with fetch-depth >= 2.
+    - name: Detect manifest change
+      id: detect
+      shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        changed=true
+        if ! git rev-parse --verify -q HEAD^ >/dev/null 2>&1; then
+          reason="no parent commit available (shallow checkout? set fetch-depth: 2)"
+        elif ! git cat-file -e "HEAD^:$MANIFEST" 2>/dev/null; then
+          reason="manifest is new in this commit"
+        elif git diff --quiet HEAD^ HEAD -- "$MANIFEST"; then
+          changed=false
+          reason="manifest unchanged since previous commit"
+        else
+          reason="manifest changed since previous commit"
+        fi
+        echo "manifest_changed=$changed" >> "$GITHUB_OUTPUT"
+        echo "cloud-app: manifest_changed=$changed ($reason)"
+
     - name: Install engine deps
       shell: bash
       run: pip install -q -r "${{ github.action_path }}/../../../engine/requirements.txt"
@@ -166,6 +228,22 @@ runs:
         tenant-id: ${{ steps.platform.outputs.tenant_id }}
         subscription-id: ${{ steps.platform.outputs.subscription_id }}
 
+    # First-deploy signal for terraform_on_manifest_change: does the Terraform state blob already
+    # exist? Authoritative (unlike a manifest diff) and cheap (one az call under
+    # the deploy identity, no terraform init). Only meaningful on the apply path.
+    - name: Check first deploy
+      id: state
+      if: ${{ inputs.plan_only == 'false' }}
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp state-exists
+        --platform-file "${{ steps.platform.outputs.file }}"
+        --tool-name "${{ steps.parse.outputs.name }}"
+        --environment "$DEPLOY_ENV"
+
     - name: Resolve config
       id: resolve
       shell: bash
@@ -226,8 +304,43 @@ runs:
         --keyvault-name "${{ steps.platform.outputs.keyvault }}"
         --require-vault
 
+    # Decide whether the Terraform apply runs. Full apply always runs unless
+    # terraform_on_manifest_change is on AND this is a routine apply whose manifest did not
+    # change. Forced on for: plan-only (it is a plan), the flag off, manual
+    # dispatch, and first deploy (no Terraform state yet). STATE_EXISTS is the
+    # authoritative first-deploy signal; anything other than a definite "true"
+    # (first deploy, or an undetermined/failed probe) forces the full apply.
+    - name: Decide apply
+      id: gate
+      shell: bash
+      env:
+        PLAN_ONLY: ${{ inputs.plan_only }}
+        TF_ON_CHANGE: ${{ inputs.terraform_on_manifest_change }}
+        MANIFEST_CHANGED: ${{ steps.detect.outputs.manifest_changed }}
+        STATE_EXISTS: ${{ steps.state.outputs.exists }}
+        EVENT: ${{ github.event_name }}
+      run: |
+        should_apply=true
+        if [ "$PLAN_ONLY" = "true" ]; then
+          reason="plan-only run"
+        elif [ "$TF_ON_CHANGE" != "true" ]; then
+          reason="terraform_on_manifest_change disabled"
+        elif [ "$EVENT" = "workflow_dispatch" ]; then
+          reason="manual dispatch"
+        elif [ "$STATE_EXISTS" != "true" ]; then
+          reason="first deploy (no Terraform state yet)"
+        elif [ "$MANIFEST_CHANGED" = "true" ]; then
+          reason="manifest changed"
+        else
+          should_apply=false
+          reason="terraform_on_manifest_change: manifest unchanged — image rotation handles the new image"
+        fi
+        echo "should_apply=$should_apply" >> "$GITHUB_OUTPUT"
+        echo "cloud-app: should_apply=$should_apply ($reason)"
+
     - name: Terraform deploy
       id: deploy
+      if: ${{ steps.gate.outputs.should_apply == 'true' }}
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
@@ -249,4 +362,12 @@ runs:
 
     - name: Write summary
       shell: bash
-      run: echo "### ${{ steps.deploy.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
+      env:
+        SHOULD_APPLY: ${{ steps.gate.outputs.should_apply }}
+        SUMMARY: ${{ steps.deploy.outputs.summary }}
+      run: |
+        if [ "$SHOULD_APPLY" = "true" ]; then
+          echo "### $SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "### cloud-app: Terraform apply skipped (terraform_on_manifest_change — manifest unchanged since the previous commit). Image rebuilt; rotation pending (next phase)." >> "$GITHUB_STEP_SUMMARY"
+        fi
