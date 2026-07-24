@@ -151,3 +151,51 @@ def test_unknown_db_server_ref_raises():
 def test_unknown_db_name_ref_raises():
     with pytest.raises(manifest.ManifestError, match="primary/ghost"):
         manifest.parse(FIXTURES / "invalid-db-ref-name.yml")
+
+
+def _validate(m):
+    return manifest.validate(m)
+
+
+def test_runtime_package_function_is_valid():
+    m = {
+        "name": "orders",
+        "functions": {"worker": {"runtime": "python:3.11", "package": "./scripts"}},
+    }
+    assert _validate(m) == []
+
+
+def test_runtime_docker_builder_is_valid():
+    m = {
+        "name": "orders",
+        "functions": {"worker": {"runtime": "dotnet-isolated:8.0", "docker": {"file": "./Dockerfile.build"}}},
+    }
+    assert _validate(m) == []
+
+
+def test_package_requires_runtime():
+    m = {"name": "orders", "functions": {"worker": {"package": "./scripts"}}}
+    assert _validate(m) != []
+
+
+def test_runtime_needs_exactly_one_artifact():
+    m = {"name": "orders", "functions": {"worker": {"runtime": "python:3.11"}}}
+    assert _validate(m) != []
+
+
+def test_runtime_rejects_two_artifacts():
+    m = {
+        "name": "orders",
+        "functions": {"worker": {"runtime": "python:3.11", "package": "./s", "image": "x:1"}},
+    }
+    assert _validate(m) != []
+
+
+def test_bad_runtime_value_rejected():
+    m = {"name": "orders", "functions": {"worker": {"runtime": "ruby:3", "package": "./s"}}}
+    assert _validate(m) != []
+
+
+def test_container_function_no_runtime_still_valid():
+    m = {"name": "orders", "functions": {"worker": {"image": "myacr.io/x:1"}}}
+    assert _validate(m) == []
