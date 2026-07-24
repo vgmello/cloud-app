@@ -201,7 +201,8 @@ def test_dispatch_run_posts_payload_and_returns_ids(dw, monkeypatch):
     mock = HttpMock({"/dispatches": [_Resp({"workflow_run_id": 99, "html_url": "https://run/99"})]})
     monkeypatch.setattr(dw.urllib.request, "urlopen", mock)
 
-    run_id, html = dw.dispatch_run("acme", "orders", "deploy.yml", "main", {"env": "dev"}, dw.build_headers("t"))
+    run_id, html = dw.dispatch_run(
+        "https://api.github.com/repos/acme/orders", "deploy.yml", "main", {"env": "dev"}, dw.build_headers("t"))
 
     assert (run_id, html) == (99, "https://run/99")
     req = mock.requests[0]
@@ -214,7 +215,7 @@ def test_dispatch_run_exits_on_http_error(dw, monkeypatch):
     err = urllib.error.HTTPError("u", 422, "unprocessable", None, io.BytesIO(b"bad ref"))
     monkeypatch.setattr(dw.urllib.request, "urlopen", HttpMock({"/dispatches": [err]}))
     with pytest.raises(SystemExit) as exc:
-        dw.dispatch_run("acme", "orders", "deploy.yml", "main", {}, dw.build_headers("t"))
+        dw.dispatch_run("https://api.github.com/repos/acme/orders", "deploy.yml", "main", {}, dw.build_headers("t"))
     assert exc.value.code == 1
 
 
@@ -259,12 +260,12 @@ def test_wait_for_completion_polls_until_done(dw, monkeypatch, no_sleep):
     })
     monkeypatch.setattr(dw.urllib.request, "urlopen", mock)
 
-    assert dw.wait_for_completion("acme", "orders", 7, dw.build_headers("t")) == "success"
+    assert dw.wait_for_completion("https://api.github.com/repos/acme/orders", 7, dw.build_headers("t")) == "success"
 
 
 def test_wait_for_completion_exits_on_auth_error(dw, monkeypatch):
     err = urllib.error.HTTPError("u", 401, "unauthorized", None, io.BytesIO(b""))
     monkeypatch.setattr(dw.urllib.request, "urlopen", HttpMock({"/runs/7": [err]}))
     with pytest.raises(SystemExit) as exc:
-        dw.wait_for_completion("acme", "orders", 7, dw.build_headers("t"))
+        dw.wait_for_completion("https://api.github.com/repos/acme/orders", 7, dw.build_headers("t"))
     assert exc.value.code == 1

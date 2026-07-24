@@ -124,10 +124,10 @@ def _download(url, headers):
 
 # --- Network stages ---
 
-def dispatch_run(owner, repo, workflow_id, branch, inputs, headers):
+def dispatch_run(repo_api, workflow_id, branch, inputs, headers):
     """POST the workflow_dispatch and return (run_id, html_url). Exit on error."""
     req = urllib.request.Request(
-        f"{API}/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches",
+        f"{repo_api}/actions/workflows/{workflow_id}/dispatches",
         data=json.dumps({"ref": branch, "inputs": inputs, "return_run_details": True}).encode("utf-8"),
         headers=headers,
         method="POST",
@@ -204,10 +204,10 @@ def _fetch_jobs(run_api, headers):
         return {}
 
 
-def wait_for_completion(owner, repo, run_id, headers):
+def wait_for_completion(repo_api, run_id, headers):
     """Poll the run until it completes, streaming step transitions. Returns the
     final conclusion; exposes deployment outputs on completion."""
-    run_api = f"{API}/repos/{owner}/{repo}/actions/runs/{run_id}"
+    run_api = f"{repo_api}/actions/runs/{run_id}"
     poll_req = urllib.request.Request(run_api, headers=headers)
     last_status = None
     failures = 0
@@ -242,16 +242,18 @@ def main():
     branch = os.environ.get("TARGET_BRANCH", "main")
     headers = build_headers(os.environ["GH_TOKEN"])
 
+    repo_api = f"{API}/repos/{owner}/{repo}"
+
     inputs = collect_target_inputs(os.environ)
     print(f"Target: {owner}/{repo} -> {workflow_id} (Branch: {branch})")
     print(f"Workflow Inputs: {inputs}")
 
-    run_id, run_html_url = dispatch_run(owner, repo, workflow_id, branch, inputs, headers)
+    run_id, run_html_url = dispatch_run(repo_api, workflow_id, branch, inputs, headers)
     print(f"\nDispatched successfully! Run ID: {run_id}")
     print(f"Run URL: {run_html_url}")
     record_run_url(run_html_url)
 
-    if wait_for_completion(owner, repo, run_id, headers) != "success":
+    if wait_for_completion(repo_api, run_id, headers) != "success":
         sys.exit(1)
 
 
