@@ -19,6 +19,23 @@ database:
   size: small
   public_access: false
 
+# Code (non-container) function example — commented out because it needs a
+# builder Dockerfile.build that this sample doesn't ship. `runtime:` switches a
+# functions: entry from container deploy to code deploy: `package:` zips a
+# directory as-is, or a `docker`/`image` builder writes its output to /out.
+# Code artifacts ship via `az functionapp deployment source config-zip`
+# after `terraform apply`, so the workflow's runner needs to reach the
+# function app's (possibly private) SCM endpoint — see the runs-on note in
+# .github/workflows/cloud-app.yml.
+#
+# functions:
+#   worker:
+#     runtime: dotnet-isolated:8.0
+#     docker: { file: ./Dockerfile.build } # builder writes /out
+#   cron:
+#     runtime: python:3.11
+#     package: ./cron # zipped as-is, no build
+
 environments:
   dev: {} # inherits everything above
   prod:

@@ -92,6 +92,45 @@ app's containers. Each `databases.<server>` entry also takes `size`,
 `storage_gb`, `public_access`, and an optional `name` override, same as the
 singular `database:` form; `dbs` defaults to `[main]`.
 
+## Code (non-container) functions
+
+A `functions:` entry deploys a container image by default (`image:` or
+`docker:`, same as `app`/`containers`). Adding `runtime:` switches that
+function to CODE deploy instead. `runtime` is one of:
+
+`dotnet-isolated:8.0`, `dotnet-isolated:9.0`, `node:20`, `node:22`,
+`python:3.11`, `python:3.12`, `java:17`, `java:21`, `powershell:7.4`.
+
+In code mode, supply exactly one artifact key:
+
+- `package:` — a directory, zipped as-is and shipped unmodified. No build
+  step; use this when the directory already contains the deployable output.
+- `docker:` or `image:` — a **builder**, not the runtime image. The platform
+  mounts a host directory at `/out`, runs the builder container, and zips
+  whatever it wrote to `/out`. The builder is only responsible for producing
+  build output at `/out`; it is not what runs in Azure Functions.
+
+The function's compute plan is EP1 (Elastic Premium) regardless of mode.
+Code artifacts are shipped after `terraform apply`, via
+`az functionapp deployment source config-zip` against the function app's SCM
+endpoint — a separate step from the Terraform apply itself, and one that
+still runs even on a manifest-unchanged deploy (`always_run_terraform:
+false`) since a code-only change has nothing for Terraform to diff. This
+means the workflow's runner needs network access to the SCM endpoint, which
+is private by default — see the `runs-on:` note in
+[samples/caller-app/.github/workflows/cloud-app.yml](../samples/caller-app/.github/workflows/cloud-app.yml)
+and the `runner_access: private` note below.
+
+```yaml
+functions:
+  worker:
+    runtime: dotnet-isolated:8.0
+    docker: { file: ./Dockerfile.build } # builder writes /out
+  cron:
+    runtime: python:3.11
+    package: ./cron # zipped as-is, no build
+```
+
 ## Trust & identity
 
 See [trust-modes.md](trust-modes.md) for the three deploy identities, self vs delegated execution, state backends (Azure Blob / AWS S3), and the one-time bootstrap. Delegated-mode stack ownership is governed by the [registries/](../registries/README.md) lock files.
