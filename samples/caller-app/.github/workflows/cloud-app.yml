@@ -1,4 +1,4 @@
-name: Deploy
+name: Cloud App
 
 on:
   push:
@@ -22,5 +22,4 @@ jobs:
     secrets: inherit
     with:
       env: ${{ inputs.environment || 'dev' }}
-      stack_name: orders-api
       plan_only: ${{ github.event_name == 'pull_request' }}

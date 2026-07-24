@@ -38,7 +38,6 @@ jobs:
     secrets: inherit
     with:
       env: dev
-      stack_name: orders-api
       plan_only: ${{ github.event_name == 'pull_request' }}
       repo_ref: v1
 ```
@@ -53,7 +52,7 @@ The trust & identity model — the split topology (control bootstraps, caller de
 | `terraform/schema/cloud-app.schema.json` | Manifest JSON Schema                                                                                                                          |
 | `engine/cloudapp/`                       | Python package with all action logic (validate, merge, normalize, build, secrets, deploy)                                                     |
 | `.github/actions/`                       | Composite actions — thin `python3 -m cloudapp` adapters                                                                                       |
-| `.github/workflows/cloud-app.yml`         | Reusable deploy workflow (clients call this) (`workflow_call`)                                                                                                    |
+| `.github/workflows/cloud-app.yml`        | Reusable deploy workflow (clients call this) (`workflow_call`)                                                                                |
 | `terraform/azure/`                       | Root module + compute (`container-app`, `function`, `static-site`) and shared (`keyvault`, `database`, `storage`, `private-endpoint`) modules |
 | `environments/`                          | Per-environment platform config (subscription, VNet, DNS zones, ACR, state, deploy SP)                                                        |
 | `docs/superpowers/specs/`                | Design spec                                                                                                                                   |

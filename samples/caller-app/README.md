@@ -5,15 +5,15 @@ without owning any Terraform, Azure identity, or deploy credentials.
 
 Two files are all an app repo needs:
 
-| File                           | Purpose                                                         |
-| ------------------------------ | --------------------------------------------------------------- |
-| `.cloud-app.yml`               | The stack manifest — what to deploy (apps, database, secrets)   |
-| `.github/workflows/deploy.yml` | Dispatches the deploy to the control repo (`vgmello/cloud-app`) |
+| File                              | Purpose                                                         |
+| --------------------------------- | --------------------------------------------------------------- |
+| `.cloud-app.yml`                  | The stack manifest — what to deploy (apps, database, secrets)   |
+| `.github/workflows/cloud-app.yml` | Dispatches the deploy to the control repo (`vgmello/cloud-app`) |
 
 ## How it works
 
 1. Merge to `main` (or run the workflow manually and pick an environment).
-2. the reusable `cloud-app.yml` (their `deploy.yml` calls it) dispatches the control repo, which triggers
+2. their `cloud-app.yml` calls the reusable `cloud-app.yml`, which dispatches the control repo, which triggers
    the control repo's deploy workflow under **its** identity — this repo never
    holds deploy-capable credentials.
 3. The control repo's stack-lock registry
@@ -26,10 +26,10 @@ Two files are all an app repo needs:
 ## To use in your own app repo
 
 - Copy both files to your repo root / `.github/workflows/`.
-- Set the manifest `name:` and the workflow `stack-name:` to your stack (they
-  must match).
+- Set the manifest `name:` to your stack — the workflow resolves the stack name
+  from it, so there is nothing to set in the workflow.
 - Add repo secrets `APP_ID` and `APP_PRIVATE_KEY` (the GitHub App installed on
   the control repo); `secrets: inherit` passes them to the reusable workflow.
 
-> This folder is a template. Its `.github/workflows/deploy.yml` is inert here —
+> This folder is a template. Its `.github/workflows/cloud-app.yml` is inert here —
 > GitHub only runs workflows from a repo's own root `.github/workflows/`.

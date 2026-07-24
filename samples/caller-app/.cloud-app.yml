@@ -1,6 +1,6 @@
 # Sample stack manifest for an app repo (delegated deploy).
-# Lives at the caller repo root as .cloud-app.yml. `name` is the stack name and
-# must match the `stack-name` passed to the dispatch action.
+# Lives at the caller repo root as .cloud-app.yml. `name` is the stack name;
+# the workflow resolves it from this file — nothing to pass in the workflow.
 name: orders-api
 
 apps:

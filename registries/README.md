@@ -45,9 +45,9 @@ jobs:
     secrets: inherit
     with:
       env: staging
-      stack_name: orders-api
 ```
 
 The workflow dispatches the control repo to bootstrap the stack (creating the
 RG + plan/apply identities federated to this repo), then runs the resource
-deploy under those identities. `stack_name` must match the manifest name.
+deploy under those identities. The stack name is the manifest `name:` — the
+workflow resolves it from the manifest, so there is nothing to pass.

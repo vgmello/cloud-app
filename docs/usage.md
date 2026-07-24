@@ -38,7 +38,6 @@ jobs:
     secrets: inherit
     with:
       env: dev
-      stack_name: orders-api
       plan_only: ${{ github.event_name == 'pull_request' }}
       repo_ref: v1 # keep in lockstep with the @v1 pin above
 ```

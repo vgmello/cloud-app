@@ -20,10 +20,6 @@ on:
         description: Plan without applying
         type: boolean
         default: false
-      stack_name:
-        description: Stack name (state key / lock key); must match the manifest name
-        type: string
-        default: cloud-app
       repo_ref:
         description: Ref of vgmello/cloud-app to use
         type: string
@@ -41,6 +37,7 @@ jobs:
   # Phase 1: dispatch the control repo to run the bootstrap (RG + plan/apply
   # identities federated to this repo) and return the RG-scoped client-ids.
   bootstrap:
+    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -61,7 +58,7 @@ jobs:
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repo: ${{ github.event.repository.name }}
           stack-file: ${{ inputs.manifest }}
-          stack-name: ${{ inputs.stack_name }}
+          stack-name: ${{ needs.setup.outputs.name }}
           branch: ${{ github.ref_name }}
           env: ${{ inputs.env }}
           plan-only: ${{ inputs.plan_only }}
@@ -171,8 +168,8 @@ jobs:
     env:
       DEPLOY_ENV: ${{ inputs.env }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
+      # No caller checkout: this job reads only .deploy (terraform + environments)
+      # and the tool.json artifact — app repos own no Terraform.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vgmello/cloud-app
