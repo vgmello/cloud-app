@@ -24,6 +24,71 @@ def collect(tool):
     return [{"name": n, "kv_name": n.lower().replace("_", "-")} for n in sorted(names)]
 
 
+def _vault_exists(run, vault, require_vault):
+    """True if the vault exists, False if not-yet-created (tolerated on first
+    deploy unless require_vault). Raise on any other az failure."""
+    show = run(["az", "keyvault", "show", "--name", vault], check=False, capture=True)
+    if show.returncode == 0:
+        return True
+    if NOT_FOUND.search(show.stderr or ""):
+        if require_vault:
+            raise SyncError(f"key vault {vault} still missing after the targeted apply")
+        gha.notice(f"key vault {vault} not created yet; deferring secret sync")
+        return False
+    raise SyncError(f"az keyvault show failed for a reason other than not-found:\n{show.stderr}")
+
+
+def _allowlist_runner_ip(run, vault, fetch_ip):
+    """Add this runner's IP to the vault firewall. Hosted runners change IP per
+    job and the firewall holds the previous apply's IP; a failure only warns."""
+    runner_ip = fetch_ip()
+    if not runner_ip:
+        return
+    rule = run(
+        ["az", "keyvault", "network-rule", "add", "--name", vault,
+         "--ip-address", runner_ip, "--output", "none"],
+        check=False, capture=True,
+    )
+    if rule.returncode != 0:
+        gha.warning(f"could not allowlist runner IP on {vault}; secret writes may hit the vault firewall")
+
+
+def _secret_unchanged(run, vault, kv_name, value):
+    current = run(
+        ["az", "keyvault", "secret", "show", "--vault-name", vault,
+         "--name", kv_name, "--query", "value", "-o", "tsv"],
+        check=False, capture=True,
+    )
+    return current.returncode == 0 and current.stdout.rstrip("\n") == value
+
+
+def _set_secret(run, vault, kv_name, value, sleep):
+    """Idempotent secret write with one RBAC-propagation retry."""
+    for attempt in (1, 2):
+        result = run(
+            ["az", "keyvault", "secret", "set", "--vault-name", vault,
+             "--name", kv_name, "--value", value, "--output", "none"],
+            check=False, capture=True,
+        )
+        if result.returncode == 0:
+            return
+        if attempt == 1:
+            gha.warning(f"secret set failed for {kv_name}; retrying in 15s (RBAC propagation)")
+            sleep(15)
+    raise SyncError(f"failed to set secret {kv_name}:\n{result.stderr}")
+
+
+def _push_secrets(run, vault, secrets, all_secrets, sleep):
+    for secret in secrets:
+        kv_name = secret["kv_name"]
+        value = all_secrets[secret["name"]]
+        if _secret_unchanged(run, vault, kv_name, value):
+            print(f"{kv_name} unchanged")
+            continue
+        _set_secret(run, vault, kv_name, value, sleep)
+        print(f"synced {kv_name}")
+
+
 def sync(tool, vault, all_secrets, run, require_vault=False, fetch_ip=_runner.fetch_runner_ip,
          sleep=time.sleep):
     """Push manifest secrets into the vault. Returns action outputs.
@@ -43,50 +108,10 @@ def sync(tool, vault, all_secrets, run, require_vault=False, fetch_ip=_runner.fe
     if missing:
         raise SyncError("missing GitHub environment secrets: " + ", ".join(missing))
 
-    show = run(["az", "keyvault", "show", "--name", vault], check=False, capture=True)
-    if show.returncode != 0:
-        if NOT_FOUND.search(show.stderr or ""):
-            if require_vault:
-                raise SyncError(f"key vault {vault} still missing after the targeted apply")
-            gha.notice(f"key vault {vault} not created yet; deferring secret sync")
-            return {**outputs, "vault-exists": "false"}
-        raise SyncError(f"az keyvault show failed for a reason other than not-found:\n{show.stderr}")
+    if not _vault_exists(run, vault, require_vault):
+        return {**outputs, "vault-exists": "false"}
 
     # Only now that the vault exists do we need this runner's IP on its firewall.
-    runner_ip = fetch_ip()
-    if runner_ip:
-        rule = run(
-            ["az", "keyvault", "network-rule", "add", "--name", vault,
-             "--ip-address", runner_ip, "--output", "none"],
-            check=False, capture=True,
-        )
-        if rule.returncode != 0:
-            gha.warning(f"could not allowlist runner IP on {vault}; secret writes may hit the vault firewall")
-
-    for secret in secrets:
-        value = all_secrets[secret["name"]]
-        kv_name = secret["kv_name"]
-        current = run(
-            ["az", "keyvault", "secret", "show", "--vault-name", vault,
-             "--name", kv_name, "--query", "value", "-o", "tsv"],
-            check=False, capture=True,
-        )
-        if current.returncode == 0 and current.stdout.rstrip("\n") == value:
-            print(f"{kv_name} unchanged")
-            continue
-        for attempt in (1, 2):
-            result = run(
-                ["az", "keyvault", "secret", "set", "--vault-name", vault,
-                 "--name", kv_name, "--value", value, "--output", "none"],
-                check=False, capture=True,
-            )
-            if result.returncode == 0:
-                break
-            if attempt == 1:
-                gha.warning(f"secret set failed for {kv_name}; retrying in 15s (RBAC propagation)")
-                sleep(15)
-        else:
-            raise SyncError(f"failed to set secret {kv_name}:\n{result.stderr}")
-        print(f"synced {kv_name}")
-
+    _allowlist_runner_ip(run, vault, fetch_ip)
+    _push_secrets(run, vault, secrets, all_secrets, sleep)
     return {**outputs, "vault-exists": "true"}
