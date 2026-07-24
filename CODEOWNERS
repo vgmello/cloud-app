@@ -8,7 +8,7 @@
 
 # Security-sensitive surfaces — identity, workflows, bootstrap, and the lock gate.
 /engine/cloudapp/identity.py @vgmello
-/.github/scripts/validate_and_lock.py @vgmello
+/engine/cloudapp/registry.py @vgmello
 /terraform/azure/bootstrap/ @vgmello
 /terraform/azure/subscription-bootstrap/ @vgmello
 /registries/ @vgmello

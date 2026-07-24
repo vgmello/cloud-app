@@ -4,7 +4,10 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 from . import (
     backend,
@@ -14,6 +17,7 @@ from . import (
     gha,
     identity,
     manifest,
+    registry,
     resolve,
     runner,
     secrets,
@@ -137,6 +141,43 @@ def cmd_bootstrap_vars(args):
     print(json.dumps(out))
 
 
+def cmd_validate_lock(args):
+    registry.validate_names(args.environment, args.stack_name, args.caller_repo)
+    stack_path = registry.resolve_stack_path(args.caller_root, args.stack_file)
+
+    if not os.path.exists(stack_path):
+        raise registry.RegistryError(
+            f"Stack file '{args.stack_file}' not found inside repository '{args.caller_repo}'!"
+        )
+    declared = _load_platform(stack_path).get("name")
+    if not declared:
+        gha.warning(f"No 'name' declared in '{args.stack_file}'. Using input name '{args.stack_name}'.")
+    name = registry.reconcile_stack_name(declared, args.stack_name)
+    gha.notice(f"Stack file '{args.stack_file}' verified (name: '{name}').")
+
+    registry_dir = Path(args.central_root) / "registries" / args.environment
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    registry_path = registry_dir / f"{args.stack_name}.yml"
+
+    if registry_path.exists():
+        lock = _load_platform(registry_path)
+        if not registry.authorize_caller(lock, args.caller_repo):
+            raise registry.RegistryError(
+                f"SECURITY VIOLATION! Repository '{args.caller_repo}' is NOT authorized to "
+                f"deploy stack '{args.stack_name}' in '{args.environment}'. "
+                f"Authorized: {lock.get('allowed_repos') or []}"
+            )
+        gha.notice(f"Repository '{args.caller_repo}' authorized for stack '{args.stack_name}'.")
+        return
+
+    gha.notice(f"New stack detected. Registering lock for '{args.stack_name}' to '{args.caller_repo}'.")
+    registered_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+    lock = registry.new_lock(args.stack_name, args.environment, args.caller_repo, registered_at)
+    registry_path.write_text(yaml.safe_dump(lock, default_flow_style=False))
+    registry.persist_lock(runner.run, args.central_root, args.environment, args.stack_name, args.caller_repo)
+    gha.notice(f"Stack lock created successfully at '{registry_path}'.")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="cloudapp")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -201,12 +242,21 @@ def main(argv=None):
     p.add_argument("--platform-file", required=True)
     p.set_defaults(func=cmd_bootstrap_vars)
 
+    p = sub.add_parser("validate-lock")
+    p.add_argument("--environment", required=True)
+    p.add_argument("--stack-file", required=True)
+    p.add_argument("--stack-name", required=True)
+    p.add_argument("--caller-repo", required=True)
+    p.add_argument("--caller-root", default="caller-workspace")
+    p.add_argument("--central-root", default="central-workspace")
+    p.set_defaults(func=cmd_validate_lock)
+
     args = parser.parse_args(argv)
     try:
         args.func(args)
     except (manifest.ManifestError, resolve.ResolveError, secrets.SyncError,
             tfdeploy.DeployError, backend.BackendError, dispatch.DispatchError,
-            ValueError) as exc:
+            registry.RegistryError, ValueError) as exc:
         gha.error(str(exc))
         return 1
     return 0

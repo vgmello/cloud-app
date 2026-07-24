@@ -1,7 +1,7 @@
 # Stack lock registry
 
 Each file binds a stack name (in one environment) to the repositories allowed to
-deploy it. The `deploy-stack` gate (`.github/scripts/validate_and_lock.py`)
+deploy it. The `deploy-stack` gate (`cloudapp validate-lock`, in `engine/cloudapp/registry.py`)
 enforces this on every delegated deploy: the first repo to deploy a given stack
 name claims it (trust-on-first-use), and any later caller not in `allowed_repos`
 is rejected before Terraform runs.

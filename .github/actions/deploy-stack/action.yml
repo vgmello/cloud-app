@@ -57,11 +57,19 @@ runs:
     - name: Validate stack ownership
       shell: bash
       env:
+        PYTHONPATH: central-workspace/engine
+        # Passed as quoted "$VAR" below, never interpolated into the command, so
+        # a hostile caller value can't inject shell. cloudapp re-validates each.
         TARGET_ENV: ${{ inputs.environment }}
         STACK_FILE: ${{ inputs.stack-file }}
         EXPECTED_STACK_NAME: ${{ inputs.stack-name }}
         CALLER_REPO: ${{ github.repository_owner }}/${{ inputs.caller-repo }}
-      run: python3 central-workspace/.github/scripts/validate_and_lock.py
+      run: >-
+        python3 -m cloudapp validate-lock
+        --environment "$TARGET_ENV"
+        --stack-file "$STACK_FILE"
+        --stack-name "$EXPECTED_STACK_NAME"
+        --caller-repo "$CALLER_REPO"
 
     # Parse validates the manifest and produces tool.<env>.json (terraform-deploy
     # requires a --tool-json even for the bootstrap stack).
