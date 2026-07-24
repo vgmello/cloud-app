@@ -12,7 +12,6 @@ import yaml
 from . import (
     backend,
     builds,
-    dispatch,
     dockerbuild,
     gha,
     identity,
@@ -255,7 +254,7 @@ def main(argv=None):
     try:
         args.func(args)
     except (manifest.ManifestError, resolve.ResolveError, secrets.SyncError,
-            tfdeploy.DeployError, backend.BackendError, dispatch.DispatchError,
+            tfdeploy.DeployError, backend.BackendError,
             registry.RegistryError, ValueError) as exc:
         gha.error(str(exc))
         return 1

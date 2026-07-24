@@ -197,9 +197,6 @@ pieces are not implemented yet:
   `deploy.client_id` (ACR is shared, outside the tool RG — a separate identity
   concern), and the AWS-state two-login path is not exercised.
 
-  (The `cloudapp.dispatch.authorize` helper is a code-level allowlist alternative
-  to the registry gate; the registry is the mechanism actually wired in.)
-
 - **State-container role assignments (wired).** The bootstrap stacks now create
   the tfstate data-plane grants (plan Reader, apply/bootstrap Contributor),
   scoped to the container. Still needs a live run to confirm RBAC propagates
