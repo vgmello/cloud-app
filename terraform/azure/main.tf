@@ -105,3 +105,22 @@ module "static_site" {
   resource_group_name = data.azurerm_resource_group.this.name
   site                = each.value
 }
+
+# Caller-supplied Terraform. Always declared; the module ships empty and creates
+# nothing until the action copies the caller's *.tf into ./custom. It runs in the
+# main stack, so it applies under the RG-scoped apply identity — that scope is
+# what confines custom resources to this tool's resource group.
+module "custom" {
+  source = "./custom"
+
+  resource_group_name             = data.azurerm_resource_group.this.name
+  location                        = local.platform.location
+  environment                     = local.env
+  tool_name                       = local.base
+  vnet_id                         = local.platform.network.vnet_id
+  subnets                         = local.platform.network.subnets
+  key_vault_id                    = module.keyvault.id
+  key_vault_uri                   = module.keyvault.vault_uri
+  app_identity_principal_ids      = { for k, m in module.container_app : k => m.identity_principal_id }
+  function_identity_principal_ids = { for k, m in module.function : k => m.identity_principal_id }
+}
