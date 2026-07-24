@@ -35,13 +35,13 @@ runs:
     # lock registry. Checked out with the default token so the lock push in the
     # gate can write back to main.
     - name: Checkout central repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       with:
         path: central-workspace
 
     # Caller repo: holds the stack manifest. Read with the caller-scoped token.
     - name: Checkout caller repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       with:
         repository: ${{ github.repository_owner }}/${{ inputs.caller-repo }}
         ref: ${{ inputs.caller-branch }}
@@ -87,7 +87,7 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
     - name: Azure login (bootstrap identity)
-      uses: azure/login@v2
+      uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
       with:
         client-id: ${{ steps.bootstrap-id.outputs.client_id }}
         tenant-id: ${{ steps.bootstrap-id.outputs.tenant_id }}
@@ -165,7 +165,7 @@ runs:
 
     - name: Upload bootstrap outputs
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: deployment-outputs-${{ github.run_id }}
         path: outputs/

@@ -1,7 +1,7 @@
 import pytest
+from conftest import FIXTURES, load_golden
 
 from cloudapp import builds, manifest
-from conftest import FIXTURES, load_golden
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,6 @@
+# Lightweight lint for the engine + the .github scripts. Focused on real defects
+# (pyflakes) + import hygiene + pyupgrade, not stylistic line-length churn.
+line-length = 120
+
+[lint]
+select = ["F", "I", "W", "UP"]

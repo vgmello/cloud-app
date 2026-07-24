@@ -1,7 +1,8 @@
 import json
 
-from cloudapp import cli
 from conftest import ENVDIR, FIXTURES
+
+from cloudapp import cli
 
 
 def read_kv(text):

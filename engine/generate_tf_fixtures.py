@@ -9,7 +9,7 @@ ENGINE = Path(__file__).parent  # engine/ — holds cloudapp + test fixtures
 REPO = Path(__file__).parents[1]  # repo root — holds terraform/
 sys.path.insert(0, str(ENGINE))
 
-from cloudapp import manifest, resolve  # noqa: E402
+from cloudapp import manifest, resolve
 
 PLATFORM = ENGINE / "tests" / "fixtures" / "environments" / "dev.yml"
 OUT = REPO / "terraform" / "azure" / "tests" / "fixtures"

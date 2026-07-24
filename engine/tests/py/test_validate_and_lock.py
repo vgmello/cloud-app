@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 SCRIPT = Path(__file__).parents[3] / ".github" / "scripts" / "validate_and_lock.py"

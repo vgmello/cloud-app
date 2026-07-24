@@ -1,5 +1,6 @@
-from cloudapp import builds, dockerbuild, manifest
 from conftest import FIXTURES, FakeRunner
+
+from cloudapp import builds, dockerbuild, manifest
 
 
 def plan_for(fixture, env, name):

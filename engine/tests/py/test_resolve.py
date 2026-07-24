@@ -1,7 +1,7 @@
 import pytest
+from conftest import ENVDIR, FIXTURES, load_golden
 
 from cloudapp import manifest, resolve
-from conftest import ENVDIR, FIXTURES, load_golden
 
 
 def test_minimal_dev_tfvars_matches_golden():

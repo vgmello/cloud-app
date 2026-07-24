@@ -1,9 +1,9 @@
 import json
 
 import pytest
+from conftest import ENVDIR, FIXTURES, FakeResult, FakeRunner
 
 from cloudapp import manifest, tfdeploy
-from conftest import ENVDIR, FIXTURES, FakeResult, FakeRunner
 
 
 def tool(fixture="minimal", env="dev"):

@@ -51,7 +51,7 @@ if not os.path.exists(stack_path):
     print(f"::error::Stack file '{STACK_FILE}' not found inside repository '{CALLER_REPO}'!")
     sys.exit(1)
 
-with open(stack_path, "r") as f:
+with open(stack_path) as f:
     stack_content = yaml.safe_load(f) or {}
 
 actual_stack_name = stack_content.get("name")
@@ -70,7 +70,7 @@ os.makedirs(registry_dir, exist_ok=True)
 
 if os.path.exists(registry_path):
     print(f"Lock file found for stack '{EXPECTED_STACK_NAME}'. Validating repository authorization...")
-    with open(registry_path, "r") as f:
+    with open(registry_path) as f:
         lock_data = yaml.safe_load(f) or {}
 
     allowed = lock_data.get("allowed_repos") or []

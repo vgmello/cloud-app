@@ -48,7 +48,7 @@ jobs:
       apply_client_id: ${{ steps.dispatch.outputs.apply_client_id }}
       resource_group: ${{ steps.dispatch.outputs.resource_group }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vgmello/cloud-app
           ref: ${{ inputs.repo_ref }}
@@ -75,9 +75,9 @@ jobs:
       name: ${{ steps.parse.outputs.name }}
       docker: ${{ steps.parse.outputs.docker }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vgmello/cloud-app
           ref: ${{ inputs.repo_ref }}
@@ -101,7 +101,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: cloud-app-config
           path: .cloud-app/tool.${{ inputs.env }}.json
@@ -117,15 +117,15 @@ jobs:
     outputs:
       image-tags: ${{ steps.build.outputs.image-tags }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vgmello/cloud-app
           ref: ${{ inputs.repo_ref }}
           path: .deploy
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: cloud-app-config
           path: .cloud-app
@@ -144,7 +144,7 @@ jobs:
 
       # Push under the apply identity, which bootstrap granted repo-scoped ACR
       # push (Container Registry Repository Writer, ABAC-limited to <name>/*).
-      - uses: azure/login@v2
+      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ needs.bootstrap.outputs.apply_client_id }}
           tenant-id: ${{ steps.platform.outputs.tenant_id }}
@@ -171,15 +171,15 @@ jobs:
     env:
       DEPLOY_ENV: ${{ inputs.env }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vgmello/cloud-app
           ref: ${{ inputs.repo_ref }}
           path: .deploy
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: cloud-app-config
           path: .cloud-app
@@ -204,7 +204,7 @@ jobs:
 
       # Log in as the RG-scoped identity bootstrap federated to this repo:
       # plan (Reader) for plan-only, apply (Contributor) otherwise.
-      - uses: azure/login@v2
+      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ inputs.plan_only && needs.bootstrap.outputs.plan_client_id || needs.bootstrap.outputs.apply_client_id }}
           tenant-id: ${{ steps.platform.outputs.tenant_id }}

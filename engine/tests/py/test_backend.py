@@ -1,7 +1,7 @@
 import pytest
+from conftest import ENVDIR
 
 from cloudapp import backend
-from conftest import ENVDIR
 
 
 def test_azurerm_main_backend_lines():

@@ -1,7 +1,7 @@
 import pytest
+from conftest import FIXTURES, FakeResult, FakeRunner
 
 from cloudapp import manifest, secrets
-from conftest import FIXTURES, FakeResult, FakeRunner
 
 
 def tool(fixture, env="dev"):

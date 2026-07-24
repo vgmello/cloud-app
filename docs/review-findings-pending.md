@@ -81,6 +81,14 @@ identity replacement (`resourceGroups/delete`,
 `roleAssignments/delete` widens the same escalation surface, so it must land
 together with the anti-escalation redesign, not before.
 
+### #16 — IaC/secret scanners deferred
+
+setup-python (pinned + versioned), ruff, pip-audit, and a checksum-verified
+actionlint are wired into CI. **tfsec/Checkov** and **Gitleaks** are deferred:
+both flag findings that need triage/allowlisting first (e.g. storage/network
+defaults, placeholder GUIDs) and would otherwise break CI on the first run.
+Add them behind a triage pass, ideally alongside #11 (network posture).
+
 ## Live-only — cannot be validated offline
 
 - **#11 — private-by-default gaps.** Function storage has no network rules /

@@ -3,9 +3,10 @@
 import re
 import time
 
-from . import gha, runner as _runner
+from . import gha
+from . import runner as _runner
 
-NOT_FOUND = re.compile(r"ResourceNotFound|was not found|could not be found", re.I)
+NOT_FOUND = re.compile(r"ResourceNotFound|was not found|could not be found", re.IGNORECASE)
 
 
 class SyncError(Exception):

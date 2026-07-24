@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Keep the SHA-pinned actions current (Dependabot bumps SHA + the # vN comment).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Python engine dependencies.
+  - package-ecosystem: pip
+    directory: /engine
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
