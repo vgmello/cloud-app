@@ -1,0 +1,9 @@
+name: shop
+apps:
+  api:
+    port: 8080
+    databases: [primary/ghost]
+databases:
+  primary:
+    type: postgres
+    dbs: [main]

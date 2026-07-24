@@ -1,5 +1,23 @@
 {
   "name": "partial",
+  "functions": {
+    "relay": {
+      "env": {},
+      "secrets": [],
+      "image": "myacr.azurecr.io/relay:2.0"
+    }
+  },
+  "static_sites": {
+    "docs": {
+      "env": {}
+    }
+  },
+  "storage": {
+    "containers": [
+      "logs"
+    ],
+    "public_access": false
+  },
   "apps": {
     "main": {
       "ingress": {
@@ -22,28 +40,16 @@
       }
     }
   },
-  "functions": {
-    "relay": {
-      "image": "myacr.azurecr.io/relay:2.0",
-      "env": {},
-      "secrets": []
+  "databases": {
+    "main": {
+      "type": "postgres",
+      "size": "large",
+      "storage_gb": 32,
+      "public_access": false,
+      "dbs": [
+        "main"
+      ]
     }
   },
-  "static_sites": {
-    "docs": {
-      "env": {}
-    }
-  },
-  "database": {
-    "type": "postgres",
-    "size": "large",
-    "storage_gb": 32,
-    "public_access": false
-  },
-  "storage": {
-    "containers": [
-      "logs"
-    ],
-    "public_access": false
-  }
+  "database_legacy": true
 }

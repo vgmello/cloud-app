@@ -16,16 +16,16 @@
         "main": {
           "cpu": 0.5,
           "memory": "1Gi",
-          "docker": {
-            "file": "./Dockerfile",
-            "context": "."
-          },
           "env": {
             "LOG_LEVEL": "warn"
           },
           "secrets": [
             "STRIPE_KEY"
-          ]
+          ],
+          "docker": {
+            "file": "./Dockerfile",
+            "context": "."
+          }
         }
       }
     },
@@ -52,16 +52,22 @@
       "secrets": []
     }
   },
-  "database": {
-    "type": "postgres",
-    "size": "medium",
-    "storage_gb": 32,
-    "public_access": false
-  },
   "storage": {
     "containers": [
       "uploads"
     ],
     "public_access": false
-  }
+  },
+  "databases": {
+    "main": {
+      "type": "postgres",
+      "size": "medium",
+      "storage_gb": 32,
+      "public_access": false,
+      "dbs": [
+        "main"
+      ]
+    }
+  },
+  "database_legacy": true
 }
