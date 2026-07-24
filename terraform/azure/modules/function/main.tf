@@ -22,6 +22,13 @@ locals {
   runtime       = try(var.function.runtime, null)
   runtime_stack = local.runtime != null ? split(":", local.runtime)[0] : null
   runtime_ver   = local.runtime != null ? split(":", local.runtime)[1] : null
+
+  native_dotnet_version              = local.runtime_stack == "dotnet-isolated" ? local.runtime_ver : null
+  native_use_dotnet_isolated_runtime = local.runtime_stack == "dotnet-isolated" ? true : null
+  native_node_version                = local.runtime_stack == "node" ? local.runtime_ver : null
+  native_python_version              = local.runtime_stack == "python" ? local.runtime_ver : null
+  native_java_version                = local.runtime_stack == "java" ? local.runtime_ver : null
+  native_powershell_core_version     = local.runtime_stack == "powershell" ? local.runtime_ver : null
 }
 
 resource "azurerm_user_assigned_identity" "this" {
@@ -95,12 +102,12 @@ resource "azurerm_linux_function_app" "this" {
     dynamic "application_stack" {
       for_each = local.runtime != null ? [1] : []
       content {
-        dotnet_version              = local.runtime_stack == "dotnet-isolated" ? local.runtime_ver : null
-        use_dotnet_isolated_runtime = local.runtime_stack == "dotnet-isolated" ? true : null
-        node_version                = local.runtime_stack == "node" ? local.runtime_ver : null
-        python_version              = local.runtime_stack == "python" ? local.runtime_ver : null
-        java_version                = local.runtime_stack == "java" ? local.runtime_ver : null
-        powershell_core_version     = local.runtime_stack == "powershell" ? local.runtime_ver : null
+        dotnet_version              = local.native_dotnet_version
+        use_dotnet_isolated_runtime = local.native_use_dotnet_isolated_runtime
+        node_version                = local.native_node_version
+        python_version              = local.native_python_version
+        java_version                = local.native_java_version
+        powershell_core_version     = local.native_powershell_core_version
       }
     }
   }
