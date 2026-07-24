@@ -199,3 +199,20 @@ def test_bad_runtime_value_rejected():
 def test_container_function_no_runtime_still_valid():
     m = {"name": "orders", "functions": {"worker": {"image": "myacr.io/x:1"}}}
     assert _validate(m) == []
+
+
+def test_function_mode():
+    assert manifest.function_mode({"runtime": "python:3.11", "package": "./s"}) == "code"
+    assert manifest.function_mode({"image": "x:1"}) == "container"
+    assert manifest.function_mode({"docker": {"file": "./Dockerfile"}}) == "container"
+
+
+def test_docker_gate_ignores_code_functions():
+    # A code function whose builder is a Dockerfile must NOT flip the ACR docker gate.
+    tool = {"functions": {"w": {"runtime": "dotnet-isolated:8.0", "docker": {"file": "./Dockerfile.build"}}}}
+    assert manifest._uses_docker_build(tool) is False
+
+
+def test_docker_gate_still_true_for_container_function():
+    tool = {"functions": {"w": {"docker": {"file": "./Dockerfile"}}}}
+    assert manifest._uses_docker_build(tool) is True

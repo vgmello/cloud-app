@@ -22,6 +22,11 @@ REPLICA_DEFAULTS = {"min": 1, "max": 3}
 SHORTHAND_FIELDS = ("cpu", "memory", "docker", "image", "env", "secrets")
 
 
+def function_mode(fn):
+    """"code" when the function declares a runtime stack, else "container"."""
+    return "code" if "runtime" in fn else "container"
+
+
 class ManifestError(Exception):
     pass
 
@@ -150,8 +155,11 @@ def _uses_docker_build(tool):
         for app in (tool.get("apps") or {}).values()
         for c in app["containers"].values()
     ]
-    entries = containers + list((tool.get("functions") or {}).values())
-    return any("docker" in e for e in entries)
+    container_functions = [
+        f for f in (tool.get("functions") or {}).values()
+        if function_mode(f) == "container"
+    ]
+    return any("docker" in e for e in containers + container_functions)
 
 
 def parse(manifest_path, app_root="."):
