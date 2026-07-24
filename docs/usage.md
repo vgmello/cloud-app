@@ -38,7 +38,7 @@ jobs:
     secrets: inherit
     with:
       plan_only: ${{ github.event_name == 'pull_request' }}
-      deploy_ref: v1   # keep in lockstep with the @v1 pin above
+      deploy_ref: v1 # keep in lockstep with the @v1 pin above
 ```
 
 ## 3. Configure GitHub environments
@@ -46,6 +46,37 @@ jobs:
 Create a GitHub environment per manifest env key (`dev`, `prod`, ...). Put
 required reviewers on `prod` — that is the approval gate. Add any manifest
 `secrets:` names as environment secrets.
+
+## Multiple databases
+
+The singular `database:` form above still works unchanged — it provisions one
+server and injects a blanket `DATABASE_URL` (Key Vault secret `database-url`)
+into every app and function.
+
+For multiple database servers or multiple logical databases per server, use
+the plural `databases:` map instead. `database:` and `databases:` are
+mutually exclusive. Apps and functions opt into specific `<server>/<db>`
+refs; each ref injects its own `<SERVER>_<DB>_DATABASE_URL` env var:
+
+```yaml
+name: shop
+apps:
+  api:
+    databases: [primary/orders, reporting/main]
+databases:
+  primary:
+    type: postgres
+    dbs: [orders, billing]
+  reporting:
+    type: sqlserver
+```
+
+Here `api` receives `PRIMARY_ORDERS_DATABASE_URL` (secret
+`database-url-primary-orders`) and `REPORTING_MAIN_DATABASE_URL` (secret
+`database-url-reporting-main`). App-level `databases:` applies to all of that
+app's containers. Each `databases.<server>` entry also takes `size`,
+`storage_gb`, `public_access`, and an optional `name` override, same as the
+singular `database:` form; `dbs` defaults to `[main]`.
 
 ## Trust & identity
 
