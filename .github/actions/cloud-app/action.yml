@@ -97,6 +97,19 @@ runs:
         INPUT_PLAN_ONLY: ${{ inputs.plan_only }}
       run: python "${{ github.action_path }}/../../scripts/dispatch_and_wait.py"
 
+    - name: Bootstrap dispatch summary
+      if: always()
+      shell: bash
+      run: |
+        cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+        ### Bootstrap Dispatch Summary
+        - **Control Repository:** \`${{ inputs.control-repo }}\`
+        - **Stack Name:** \`${{ steps.parse.outputs.name }}\`
+        - **Environment:** \`${{ inputs.env }}\`
+        - **Caller Branch:** \`${{ github.ref_name }}\`
+        - **[View Control Bootstrap Run](${{ env.TARGET_RUN_URL }})**
+        EOF
+
     - name: Read platform config
       id: platform
       shell: bash
