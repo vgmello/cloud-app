@@ -222,6 +222,22 @@ runs:
         tenant-id: ${{ steps.platform.outputs.tenant_id }}
         subscription-id: ${{ steps.platform.outputs.subscription_id }}
 
+    # First-deploy signal for smart_apply: does the Terraform state blob already
+    # exist? Authoritative (unlike a manifest diff) and cheap (one az call under
+    # the deploy identity, no terraform init). Only meaningful on the apply path.
+    - name: Check first deploy
+      id: state
+      if: ${{ inputs.plan_only == 'false' }}
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp state-exists
+        --platform-file "${{ steps.platform.outputs.file }}"
+        --tool-name "${{ steps.parse.outputs.name }}"
+        --environment "$DEPLOY_ENV"
+
     - name: Resolve config
       id: resolve
       shell: bash
@@ -285,7 +301,9 @@ runs:
     # Decide whether the Terraform apply runs. Full apply always runs unless
     # smart_apply is on AND this is a routine apply whose manifest did not
     # change. Forced on for: plan-only (it is a plan), smart_apply off, manual
-    # dispatch, and first deploy (key vault not yet created).
+    # dispatch, and first deploy (no Terraform state yet). STATE_EXISTS is the
+    # authoritative first-deploy signal; anything other than a definite "true"
+    # (first deploy, or an undetermined/failed probe) forces the full apply.
     - name: Decide apply
       id: gate
       shell: bash
@@ -293,7 +311,7 @@ runs:
         PLAN_ONLY: ${{ inputs.plan_only }}
         SMART_APPLY: ${{ inputs.smart_apply }}
         MANIFEST_CHANGED: ${{ steps.detect.outputs.manifest_changed }}
-        VAULT_EXISTS: ${{ steps.secrets.outputs.vault-exists }}
+        STATE_EXISTS: ${{ steps.state.outputs.exists }}
         EVENT: ${{ github.event_name }}
       run: |
         should_apply=true
@@ -303,8 +321,8 @@ runs:
           reason="smart_apply disabled"
         elif [ "$EVENT" = "workflow_dispatch" ]; then
           reason="manual dispatch"
-        elif [ "$VAULT_EXISTS" = "false" ]; then
-          reason="first deploy (key vault not yet created)"
+        elif [ "$STATE_EXISTS" != "true" ]; then
+          reason="first deploy (no Terraform state yet)"
         elif [ "$MANIFEST_CHANGED" = "true" ]; then
           reason="manifest changed"
         else
