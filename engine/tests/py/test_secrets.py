@@ -135,3 +135,32 @@ def test_load_secrets_blank_app_secrets_falls_back():
 
 def test_load_secrets_empty_returns_empty_dict():
     assert secrets.load_secrets({}) == {}
+
+
+def test_sentinel_hash_is_deterministic_and_order_independent():
+    a = [{"name": "A", "kv_name": "a"}, {"name": "B", "kv_name": "b"}]
+    b = [{"name": "B", "kv_name": "b"}, {"name": "A", "kv_name": "a"}]
+    vals = {"A": "1", "B": "2"}
+    assert secrets.sentinel_hash("stk", a, vals) == secrets.sentinel_hash("stk", b, vals)
+
+
+def test_sentinel_hash_changes_on_value_change():
+    s = [{"name": "A", "kv_name": "a"}]
+    assert secrets.sentinel_hash("stk", s, {"A": "1"}) != secrets.sentinel_hash("stk", s, {"A": "2"})
+
+
+def test_sentinel_hash_changes_when_name_added():
+    one = [{"name": "A", "kv_name": "a"}]
+    two = [{"name": "A", "kv_name": "a"}, {"name": "B", "kv_name": "b"}]
+    assert secrets.sentinel_hash("stk", one, {"A": "1"}) != secrets.sentinel_hash("stk", two, {"A": "1", "B": "2"})
+
+
+def test_sentinel_hash_folds_stack_name():
+    s = [{"name": "A", "kv_name": "a"}]
+    vals = {"A": "1"}
+    assert secrets.sentinel_hash("stk-one", s, vals) != secrets.sentinel_hash("stk-two", s, vals)
+
+
+def test_sentinel_kv_name_normalizes_and_suffixes():
+    assert secrets.sentinel_kv_name("orders-api") == "orders-api-secrets-sentinel"
+    assert secrets.sentinel_kv_name("Orders_API.v2") == "orders-api-v2-secrets-sentinel"

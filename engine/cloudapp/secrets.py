@@ -1,5 +1,6 @@
 """Manifest secrets: collection and Key Vault sync."""
 
+import hashlib
 import json
 import re
 import time
@@ -23,6 +24,28 @@ def collect(tool):
     for function in (tool.get("functions") or {}).values():
         names.update(function.get("secrets", []))
     return [{"name": n, "kv_name": n.lower().replace("_", "-")} for n in sorted(names)]
+
+
+_SENTINEL_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+
+
+def sentinel_kv_name(stack_name):
+    """Reserved Key Vault secret name that stores the secret-set hash."""
+    base = _SENTINEL_NON_ALNUM.sub("-", stack_name.lower()).strip("-")
+    return f"{base}-secrets-sentinel"
+
+
+def sentinel_hash(stack_name, secrets, all_secrets):
+    """SHA-256 over the stack name and the sorted name\\0value pairs.
+
+    Order-independent (sorted by name); changes when any value changes or a
+    name is added/removed. The stack name is folded in for cross-vault
+    distinctness (not a security control — see the design spec).
+    """
+    lines = [stack_name]
+    for secret in sorted(secrets, key=lambda s: s["name"]):
+        lines.append(f"{secret['name']}\0{all_secrets[secret['name']]}")
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
 
 def _vault_exists(run, vault, require_vault):
