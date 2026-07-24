@@ -178,21 +178,55 @@ needs. `local.state_scope` remains only for the bootstrap identity's own grant.
 
 **Terraform — `terraform/azure/subscription-bootstrap/main.tf`**
 
-The bootstrap custom role currently carries only resourceGroups /
-managedIdentity / roleAssignments actions and therefore **cannot create a
-container**. It gains:
+The bootstrap identity currently holds only resourceGroups / managedIdentity /
+roleAssignments actions and therefore **cannot create a container**.
 
-```
-"Microsoft.Storage/storageAccounts/blobServices/containers/read",
-"Microsoft.Storage/storageAccounts/blobServices/containers/write",
+It must NOT gain those actions through the existing `cloudapp-bootstrap` role.
+That role is assigned at **subscription scope**
+(`subscription-bootstrap/main.tf:7,61` — `local.scope = "/subscriptions/<sub>"`),
+so adding container actions there would grant container CRUD over _every_
+storage account in the subscription, including the app workload accounts
+(`modules/shared/storage`) and the function backing stores
+(`modules/function`) — a material worsening of `#4` in
+`docs/review-findings-pending.md` for no benefit.
+
+Instead, add a **second, narrowly scoped custom role** holding only the two
+container actions, and assign it **solely at the state account's scope**:
+
+```hcl
+resource "azurerm_role_definition" "state_container" {
+  count = var.state_account_id == "" ? 0 : 1
+  name  = "cloudapp-state-container-${var.environment}"
+  scope = local.scope
+
+  permissions {
+    actions = [
+      "Microsoft.Storage/storageAccounts/blobServices/containers/read",
+      "Microsoft.Storage/storageAccounts/blobServices/containers/write",
+    ]
+    not_actions = []
+  }
+
+  assignable_scopes = [local.scope]
+}
+
+resource "azurerm_role_assignment" "state_container" {
+  count              = var.state_account_id == "" ? 0 : 1
+  scope              = var.state_account_id # the state account ONLY
+  role_definition_id = azurerm_role_definition.state_container[0].role_definition_resource_id
+  principal_id       = azurerm_user_assigned_identity.bootstrap.principal_id
+}
 ```
 
-This is a deliberate widening of the most privileged role in the system and is
-called out explicitly here rather than slipped in — see `#4` in
-`docs/review-findings-pending.md`, which already tracks bootstrap-role
-escalation. The actions are management-plane container CRUD, scoped by the
-role's existing `assignable_scopes`; they do not grant data-plane read of blob
-_contents_.
+These are management-plane container CRUD actions; they do not grant data-plane
+read of blob _contents_. The identity's existing data-plane
+`Storage Blob Data Contributor` grant on the shared container (for its own
+`bootstrap.tfstate`) is unchanged.
+
+**Do not substitute the built-in `Storage Account Contributor`.** It includes
+`Microsoft.Storage/storageAccounts/listKeys/action`, which yields the account
+keys and therefore full data-plane access to _every_ container in the state
+account — silently defeating the isolation this change exists to create.
 
 **Engine — `engine/cloudapp/backend.py`**
 
@@ -270,7 +304,9 @@ referencing them as `$VAR` — the pattern already used correctly at lines 84-85
 - `engine/cloudapp/cli.py` — pass `stack_file` to `validate_names`; emit `stack_state_container`.
 - `engine/cloudapp/backend.py` — `stack_container`, used by `render` and `state_exists`.
 - `terraform/azure/bootstrap/{main.tf,variables.tf}` — per-stack container + re-scoped grants.
-- `terraform/azure/subscription-bootstrap/main.tf` — container CRUD actions.
+- `terraform/azure/subscription-bootstrap/main.tf` — second narrow custom role
+  (`cloudapp-state-container-<env>`) plus its assignment scoped to the state
+  account only; the subscription-scoped `cloudapp-bootstrap` role is unchanged.
 - Tests: `engine/tests/py/{test_registry.py,test_backend.py,test_cli.py}`,
   `terraform/azure/bootstrap/tests/bootstrap.tftest.hcl`.
 
@@ -284,7 +320,12 @@ referencing them as `$VAR` — the pattern already used correctly at lines 84-85
   hyphen (`foo-` + `dev` → `foo-dev`, never `foo--dev`); `render` emits the
   per-stack container; `state_exists` probes it. Terraform test asserts the
   container resource exists and that `plan_state`/`apply_state` scope to the
-  container's `resource_manager_id`, not the shared `state_scope`.
+  container's `resource_manager_id`, not the shared `state_scope`. A
+  `subscription-bootstrap` test asserts the state-container role assignment is
+  scoped to `var.state_account_id` (not `local.scope`), and that the
+  subscription-scoped `cloudapp-bootstrap` role's action list contains no
+  `Microsoft.Storage/*` entry — a regression guard against the escalation this
+  design deliberately avoided.
 - **I1:** assert the heredoc uses a quoted delimiter and that no `${{ }}`
   appears inside the heredoc body.
 - Full engine suite + `ruff` + `terraform test` + `terraform fmt -check` green.
@@ -292,6 +333,12 @@ referencing them as `$VAR` — the pattern already used correctly at lines 84-85
 ## Rollout note
 
 C1 and I1 take effect immediately on merge. C2 changes where new stacks store
-state; because nothing is live, there is no cutover. The
-`subscription-bootstrap` role change must be applied before the first bootstrap
-run, otherwise container creation fails with an authorization error.
+state; because nothing is live, there is no cutover.
+
+`subscription-bootstrap` is run once per subscription + environment by a
+subscription Owner, so the new `cloudapp-state-container-<env>` role and its
+account-scoped assignment must be applied **before the first bootstrap run** of
+that environment — otherwise container creation fails with an authorization
+error. The tfstate storage account itself remains an out-of-band landing-zone
+prerequisite (no Terraform in this repo creates it); this change only adds a
+container inside it.
