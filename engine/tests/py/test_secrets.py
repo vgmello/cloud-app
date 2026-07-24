@@ -22,7 +22,7 @@ def test_collect_empty_without_secrets():
 def test_sync_no_secrets_short_circuits():
     run = FakeRunner()
     outputs = secrets.sync(tool("minimal"), "kv-x", {}, run)
-    assert outputs == {"secret-count": 0, "vault-exists": "true"}
+    assert outputs == {"secret-count": 0, "vault-exists": "true", "secrets-changed": "false"}
     assert run.calls == []
 
 
@@ -50,12 +50,14 @@ def test_sync_other_show_errors_fail_hard():
 
 
 def test_sync_skips_unchanged_secret():
+    want = secrets.sentinel_hash("orders-api", secrets.collect(tool("full")), {"STRIPE_KEY": "v"})
     run = FakeRunner([
-        (("az", "keyvault", "secret", "show"), FakeResult(0, stdout="v\n")),
+        (("az", "keyvault", "secret", "show"), FakeResult(0, stdout=want + "\n")),
     ])
-    secrets.sync(tool("full"), "kv-x", {"STRIPE_KEY": "v"}, run, fetch_ip=lambda: "1.2.3.4")
+    outputs = secrets.sync(tool("full"), "kv-x", {"STRIPE_KEY": "v"}, run, fetch_ip=lambda: "1.2.3.4")
     assert run.commands("az", "keyvault", "secret", "set") == []
     assert len(run.commands("az", "keyvault", "network-rule", "add")) == 1
+    assert outputs["secrets-changed"] == "false"
 
 
 def test_sync_does_not_fetch_ip_when_vault_missing():
@@ -72,9 +74,10 @@ def test_sync_sets_changed_secret():
     ])
     outputs = secrets.sync(tool("full"), "kv-x", {"STRIPE_KEY": "v"}, run, fetch_ip=lambda: None)
     sets = run.commands("az", "keyvault", "secret", "set")
-    assert len(sets) == 1
+    assert len(sets) == 2
     assert "stripe-key" in sets[0]
-    assert outputs == {"secret-count": 1, "vault-exists": "true"}
+    assert "orders-api-secrets-sentinel" in sets[1]
+    assert outputs == {"secret-count": 1, "vault-exists": "true", "secrets-changed": "true"}
 
 
 def test_sync_retries_set_once_then_fails():
@@ -164,3 +167,94 @@ def test_sentinel_hash_folds_stack_name():
 def test_sentinel_kv_name_normalizes_and_suffixes():
     assert secrets.sentinel_kv_name("orders-api") == "orders-api-secrets-sentinel"
     assert secrets.sentinel_kv_name("Orders_API.v2") == "orders-api-v2-secrets-sentinel"
+
+
+class _Res:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _vault_run(sentinel_value):
+    """Fake `run`: vault exists; sentinel read returns sentinel_value (None => not
+    found); all sets succeed. Records every command."""
+    calls = []
+
+    def run(cmd, check=False, capture=False):
+        calls.append(cmd)
+        if cmd[:3] == ["az", "keyvault", "show"]:
+            return _Res(0)
+        if cmd[:4] == ["az", "keyvault", "secret", "show"]:
+            if sentinel_value is None:
+                return _Res(1, "", "ResourceNotFound")
+            return _Res(0, sentinel_value + "\n")
+        return _Res(0)  # secret set / network-rule add
+
+    run.calls = calls
+    return run
+
+
+_TOOL = {"name": "orders-api", "apps": {"api": {"containers": {"main": {"secrets": ["STRIPE_KEY"]}}}}, "functions": {}}
+_ALL = {"STRIPE_KEY": "sk_1"}
+
+
+def _sets(calls):
+    return [c for c in calls if c[:4] == ["az", "keyvault", "secret", "set"]]
+
+
+def test_sync_skips_writes_when_sentinel_matches():
+    from cloudapp import secrets as s
+    want = s.sentinel_hash("orders-api", s.collect(_TOOL), _ALL)
+    run = _vault_run(want)
+    out = s.sync(_TOOL, "kv-x", _ALL, run, fetch_ip=lambda: "", sleep=lambda _: None)
+    assert _sets(run.calls) == []
+    assert out["secrets-changed"] == "false"
+    assert out["vault-exists"] == "true"
+
+
+def test_sync_writes_all_then_sentinel_last_on_mismatch():
+    from cloudapp import secrets as s
+    run = _vault_run("stale-hash")
+    out = s.sync(_TOOL, "kv-x", _ALL, run, fetch_ip=lambda: "", sleep=lambda _: None)
+    sets = _sets(run.calls)
+    # one set for the mapped secret + one for the sentinel; sentinel is last
+    names = [c[c.index("--name") + 1] for c in sets]
+    assert names == ["stripe-key", "orders-api-secrets-sentinel"]
+    assert out["secrets-changed"] == "true"
+
+
+def test_sync_writes_all_when_sentinel_absent():
+    from cloudapp import secrets as s
+    run = _vault_run(None)
+    out = s.sync(_TOOL, "kv-x", _ALL, run, fetch_ip=lambda: "", sleep=lambda _: None)
+    names = [c[c.index("--name") + 1] for c in _sets(run.calls)]
+    assert names == ["stripe-key", "orders-api-secrets-sentinel"]
+    assert out["secrets-changed"] == "true"
+
+
+def test_sync_never_deletes():
+    from cloudapp import secrets as s
+    run = _vault_run("stale-hash")
+    s.sync(_TOOL, "kv-x", _ALL, run, fetch_ip=lambda: "", sleep=lambda _: None)
+    assert not any("delete" in c for c in run.calls)
+
+
+def test_sync_rejects_secret_colliding_with_sentinel():
+    from cloudapp import secrets as s
+    tool = {"name": "orders-api",
+            "apps": {"api": {"containers": {"main": {"secrets": ["ORDERS_API_SECRETS_SENTINEL"]}}}},
+            "functions": {}}
+    run = _vault_run("stale-hash")
+    with pytest.raises(s.SyncError, match="sentinel"):
+        s.sync(tool, "kv-x", {"ORDERS_API_SECRETS_SENTINEL": "v"}, run, fetch_ip=lambda: "", sleep=lambda _: None)
+
+
+def test_sync_no_manifest_secrets_reports_unchanged():
+    from cloudapp import secrets as s
+    tool = {"name": "orders-api", "apps": {}, "functions": {}}
+    run = _vault_run(None)
+    out = s.sync(tool, "kv-x", {}, run, fetch_ip=lambda: "", sleep=lambda _: None)
+    assert out["vault-exists"] == "true"
+    assert out["secrets-changed"] == "false"
+    assert _sets(run.calls) == []
