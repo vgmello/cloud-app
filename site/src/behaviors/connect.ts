@@ -45,5 +45,15 @@ export function initConnectors(root: ParentNode = document): void {
 
     draw();
     window.addEventListener("resize", draw, { passive: true });
+
+    // `draw()` above runs synchronously right after `initReveal` applies
+    // `will-reveal` (opacity: 0; translateY(12px)), so the first pass bakes
+    // in pre-reveal coordinates. Once the reveal transition on a child
+    // finishes — settling it at its resting position — `transitionend`
+    // bubbles up to this container and we redraw with correct coordinates.
+    // Under reduced motion `initReveal` never applies `will-reveal` (it
+    // jumps straight to `is-revealed`), so there is no layout change and no
+    // transition to wait for; the initial `draw()` is already correct.
+    container.addEventListener("transitionend", draw);
   }
 }

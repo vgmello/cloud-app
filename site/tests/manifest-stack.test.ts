@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { manifestStack } from "../src/sections/manifest-stack";
+import { manifestStack, validateAnchors } from "../src/sections/manifest-stack";
 import { sample } from "../src/content";
 
 function render(): HTMLElement {
@@ -22,12 +22,30 @@ describe("manifest→stack section", () => {
     const sources = [
       ...host.querySelectorAll<HTMLElement>("[data-connect-from]"),
     ];
-    expect(sources.length).toBeGreaterThan(0);
+    // Pinned count: exactly the two truthful anchors (app: -> res-app,
+    // database: -> res-db). A change to this number should be a deliberate
+    // decision, not a silent side effect of an ANCHORS edit.
+    expect(sources.length).toBe(2);
     for (const source of sources) {
       expect(
         host.querySelector(`#${source.dataset.connectFrom}`),
       ).not.toBeNull();
     }
+  });
+
+  it("throws naming the offending key when an ANCHORS key drifts from the manifest", () => {
+    // Simulates content.ts drifting out from under ANCHORS: a manifest with
+    // no "database:" line at all. Without validation this would silently
+    // drop the connector instead of failing loudly.
+    expect(() => validateAnchors(["app:", "  port: 8080"])).toThrow(
+      /database:/,
+    );
+  });
+
+  it("does not throw when every ANCHORS key matches a manifest line", () => {
+    expect(() =>
+      validateAnchors(sample("stack-manifest").code.trimEnd().split("\n")),
+    ).not.toThrow();
   });
 
   it("provides an svg canvas for the connector lines", () => {

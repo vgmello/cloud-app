@@ -15,6 +15,11 @@ const RESOURCES: readonly Resource[] = [
     detail: "revision, scaling rules, internal ingress",
   },
   {
+    id: "res-db",
+    title: "Postgres flexible server",
+    detail: "private endpoint, private DNS, generated credentials",
+  },
+  {
     id: "res-identity",
     title: "Managed identity",
     detail: "per-app, RG-scoped, federated to your workflow",
@@ -24,20 +29,35 @@ const RESOURCES: readonly Resource[] = [
     title: "Key Vault",
     detail: "secrets synced from the workflow, referenced by the app",
   },
-  {
-    id: "res-db",
-    title: "Postgres flexible server",
-    detail: "private endpoint, private DNS, generated credentials",
-  },
 ];
 
-/** Manifest lines that anchor a connector, keyed by the resource they create. */
+/**
+ * Manifest lines that anchor a connector, keyed by the resource they create.
+ * Anchor only what is true: `app:` really provisions the Container App, and
+ * `database:` really provisions Postgres. Managed identity and Key Vault are
+ * deliberately left unanchored — they're what the platform adds without
+ * being asked, which is the section's point.
+ */
 const ANCHORS: Record<string, string> = {
   "app:": "res-app",
-  "  ingress: internal": "res-identity",
   "database:": "res-db",
-  "  size: small": "res-vault",
 };
+
+/**
+ * Guards against ANCHORS drifting from the manifest text in `content.ts`.
+ * Both files can change independently, and a key that stops matching any
+ * manifest line would otherwise drop its connector silently. Fail loudly
+ * instead, naming the offending key.
+ */
+export function validateAnchors(lines: readonly string[]): void {
+  for (const key of Object.keys(ANCHORS)) {
+    if (!lines.includes(key)) {
+      throw new Error(
+        `manifest-stack: ANCHORS key ${JSON.stringify(key)} does not match any line of the "stack-manifest" sample`,
+      );
+    }
+  }
+}
 
 function manifestLine(line: string): string {
   const target = ANCHORS[line];
@@ -54,6 +74,7 @@ export const manifestStack: Section = {
   id: "manifest-stack",
   render: () => {
     const lines = sample("stack-manifest").code.trimEnd().split("\n");
+    validateAnchors(lines);
     return html`
       <section id="manifest-stack" class="border-b border-line">
         <div class="mx-auto w-full max-w-5xl px-6 py-20 md:py-28">

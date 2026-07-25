@@ -83,6 +83,28 @@ describe("initConnectors", () => {
     ).toHaveLength(2);
   });
 
+  it("redraws when a reveal transition finishes on the connector container", () => {
+    // The reveal animation settles a manifest line or resource card into
+    // its resting position via a CSS transition on that descendant; the
+    // transitionend event bubbles up to the [data-connectors] container.
+    // jsdom never runs layout or transitions, so this only proves the
+    // listener is wired to re-run draw() without duplicating lines — not
+    // that coordinates change, which requires a real browser.
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn() }),
+    );
+    setup();
+    initConnectors(document);
+    const container = document.querySelector<HTMLElement>("[data-connectors]")!;
+    container.dispatchEvent(
+      new Event("transitionend", { bubbles: true }),
+    );
+    expect(
+      document.querySelectorAll("[data-connector-canvas] line"),
+    ).toHaveLength(2);
+  });
+
   it("skips the drawing animation under reduced motion but still draws lines", () => {
     vi.stubGlobal(
       "matchMedia",
