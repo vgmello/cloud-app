@@ -120,10 +120,12 @@ runs:
     - name: Parse manifest
       id: parse
       shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp parse-manifest
-        --manifest "${{ inputs.manifest }}"
+        --manifest "$MANIFEST"
         --output-dir .cloud-app
         --app-root "."
 
@@ -167,15 +169,22 @@ runs:
     - name: Bootstrap dispatch summary
       if: always()
       shell: bash
+      env:
+        CONTROL_REPO: ${{ inputs.control-repo }}
+        STACK_NAME: ${{ steps.parse.outputs.name }}
+        DEPLOY_ENV: ${{ inputs.env }}
+        CALLER_BRANCH: ${{ github.ref_name }}
       run: |
-        cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+        cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
         ### Bootstrap Dispatch Summary
-        - **Control Repository:** \`${{ inputs.control-repo }}\`
-        - **Stack Name:** \`${{ steps.parse.outputs.name }}\`
-        - **Environment:** \`${{ inputs.env }}\`
-        - **Caller Branch:** \`${{ github.ref_name }}\`
-        - **[View Control Bootstrap Run](${{ env.TARGET_RUN_URL }})**
         EOF
+        {
+          echo "- **Control Repository:** \`$CONTROL_REPO\`"
+          echo "- **Stack Name:** \`$STACK_NAME\`"
+          echo "- **Environment:** \`$DEPLOY_ENV\`"
+          echo "- **Caller Branch:** \`$CALLER_BRANCH\`"
+          echo "- **[View Control Bootstrap Run]($TARGET_RUN_URL)**"
+        } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Read platform config
       id: platform
