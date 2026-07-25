@@ -107,12 +107,14 @@ resource "azurerm_role_assignment" "bootstrap_state" {
 # is assigned at subscription scope, where these actions would reach every
 # storage account in the subscription (app workload + function backing stores).
 resource "azurerm_role_definition" "state_container" {
-  count = var.state_account_id == "" ? 0 : 1
-  name  = "cloudapp-state-container-${var.environment}"
-  scope = local.scope
+  count       = var.state_account_id == "" ? 0 : 1
+  name        = "cloudapp-state-container-${var.environment}"
+  scope       = local.scope
+  description = "Grants container CRUD on the state account only"
 
   permissions {
     actions = [
+      "Microsoft.Storage/storageAccounts/read",
       "Microsoft.Storage/storageAccounts/blobServices/containers/read",
       "Microsoft.Storage/storageAccounts/blobServices/containers/write",
     ]

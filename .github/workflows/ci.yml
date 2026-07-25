@@ -52,7 +52,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
-          terraform_version: "1.9.8"
+          terraform_version: "1.15.5"
 
       - name: Format
         run: terraform -chdir=terraform/azure fmt -check -recursive

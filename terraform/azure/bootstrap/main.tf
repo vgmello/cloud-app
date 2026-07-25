@@ -63,14 +63,14 @@ resource "azurerm_storage_container" "state" {
 # the main state, apply reads+writes it. Skipped when no state container.
 resource "azurerm_role_assignment" "plan_state" {
   count                = length(azurerm_storage_container.state)
-  scope                = azurerm_storage_container.state[0].resource_manager_id
+  scope                = azurerm_storage_container.state[0].id
   role_definition_name = "Storage Blob Data Reader"
   principal_id         = azurerm_user_assigned_identity.plan.principal_id
 }
 
 resource "azurerm_role_assignment" "apply_state" {
   count                = length(azurerm_storage_container.state)
-  scope                = azurerm_storage_container.state[0].resource_manager_id
+  scope                = azurerm_storage_container.state[0].id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.apply.principal_id
 }

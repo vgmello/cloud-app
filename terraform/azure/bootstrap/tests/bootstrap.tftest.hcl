@@ -45,19 +45,19 @@ run "identities_and_scoped_roles" {
 run "state_container_grants" {
   command = plan
 
-  # resource_manager_id is computed; pin it so the grant scope is
+  # id is computed; pin it so the grant scope is
   # comparable during plan.
   override_resource {
     target          = azurerm_storage_container.state[0]
     override_during = plan
     values = {
-      resource_manager_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstateprod/blobServices/default/containers/tfstate"
+      id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstateprod/blobServices/default/containers/orders-api-prod"
     }
   }
 
   variables {
     state_account_id      = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstateprod"
-    stack_state_container = "tfstate"
+    stack_state_container = "orders-api-prod"
   }
 
   assert {
@@ -69,7 +69,7 @@ run "state_container_grants" {
     error_message = "apply identity must read+write the state container"
   }
   assert {
-    condition     = azurerm_role_assignment.apply_state[0].scope == azurerm_storage_container.state[0].resource_manager_id
+    condition     = azurerm_role_assignment.apply_state[0].scope == azurerm_storage_container.state[0].id
     error_message = "state grant must be scoped to the stack's own container"
   }
 }
@@ -77,13 +77,13 @@ run "state_container_grants" {
 run "state_container_is_per_stack_and_grants_scope_to_it" {
   command = plan
 
-  # resource_manager_id is computed; pin it so the grant scope is
+  # id is computed; pin it so the grant scope is
   # comparable during plan.
   override_resource {
     target          = azurerm_storage_container.state[0]
     override_during = plan
     values = {
-      resource_manager_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstatedev/blobServices/default/containers/orders-dev"
+      id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstatedev/blobServices/default/containers/orders-dev"
     }
   }
 
@@ -104,12 +104,12 @@ run "state_container_is_per_stack_and_grants_scope_to_it" {
   }
 
   assert {
-    condition     = azurerm_role_assignment.apply_state[0].scope == azurerm_storage_container.state[0].resource_manager_id
+    condition     = azurerm_role_assignment.apply_state[0].scope == azurerm_storage_container.state[0].id
     error_message = "apply state grant must scope to this stack's container, not a shared one"
   }
 
   assert {
-    condition     = azurerm_role_assignment.plan_state[0].scope == azurerm_storage_container.state[0].resource_manager_id
+    condition     = azurerm_role_assignment.plan_state[0].scope == azurerm_storage_container.state[0].id
     error_message = "plan state grant must scope to this stack's container, not a shared one"
   }
 }
