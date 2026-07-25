@@ -398,30 +398,50 @@ def test_prepare_custom_tf_reports_error_for_bad_provider(tmp_path):
 
 def test_subprocess_failure_surfaces_as_error_annotation(tmp_path, monkeypatch, capsys):
     """A docker/az invocation that exits non-zero must produce an ::error::
-    annotation and rc=1, not a raw traceback."""
+    annotation with the captured output, not a raw traceback.
+
+    Driven through docker-build because dockerbuild.build_and_push is one of the
+    real call sites that runs with check=True.
+    """
     import json as _json
     import subprocess
 
     from cloudapp import cli, runner
 
-    tool = {"name": "orders-api", "apps": {"api": {"replicas": {"min": 1}}}, "functions": {}}
+    tool = {
+        "name": "orders-api",
+        "apps": {"api": {"containers": {"main": {}}}},
+        "functions": {},
+    }
     (tmp_path / "tool.dev.json").write_text(_json.dumps(tool))
-    (tmp_path / "dev.yml").write_text('naming_prefix: ""\nstate_backend:\n  type: azurerm\n')
 
     def boom(cmd, check=False, capture=False, cwd=None):
-        raise subprocess.CalledProcessError(127, cmd)
+        raise subprocess.CalledProcessError(127, cmd, output="", stderr="az: login failed")
 
     monkeypatch.setattr(runner, "run", boom)
 
     rc = cli.main([
-        "verify-deploy",
+        "docker-build",
         "--tool-json", str(tmp_path / "tool.dev.json"),
-        "--environment", "dev",
-        "--platform-file", str(tmp_path / "dev.yml"),
-        "--resource-group", "rg-x",
+        "--tool-name", "orders-api",
+        "--registry", "acme.azurecr.io",
+        "--git-sha", "abc123",
     ])
 
     assert rc == 1
     out = capsys.readouterr().out
     assert "::error::" in out
     assert "exit 127" in out
+    assert "az: login failed" in out, "captured stderr must reach the log"
+
+
+def test_subprocess_failure_redacts_credential_arguments():
+    """The handler echoes argv, so a secret-bearing flag must not leak."""
+    from cloudapp import cli
+
+    rendered = cli._redact_cmd(
+        ["az", "keyvault", "secret", "set", "--name", "stripe-key", "--value", "sk_live_secret"]
+    )
+    assert "sk_live_secret" not in rendered
+    assert "--value ***" in rendered
+    assert "--name stripe-key" in rendered

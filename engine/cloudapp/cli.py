@@ -29,6 +29,30 @@ from . import (
 )
 from .yamlcompat import load_yaml
 
+# Flags whose following argument is a credential. The CalledProcessError handler
+# echoes argv, and it is deliberately generic, so redact rather than rely on
+# every future call site avoiding check=True with a secret on the command line.
+_SECRET_FLAGS = frozenset({
+    "--value", "--password", "--token", "--secret", "--client-secret", "--private-key",
+})
+
+
+def _redact_cmd(cmd):
+    """Render argv for an error message with credential arguments masked."""
+    if isinstance(cmd, str):
+        return cmd
+    parts = []
+    redact_next = False
+    for raw in cmd:
+        part = str(raw)
+        if redact_next:
+            parts.append("***")
+            redact_next = False
+            continue
+        parts.append(part)
+        redact_next = part in _SECRET_FLAGS
+    return " ".join(parts)
+
 
 def _load_json(path):
     return json.loads(Path(path).read_text())
@@ -363,8 +387,13 @@ def main(argv=None):
         # docker/az/terraform invocations that run with check=True raise this.
         # Catching it here keeps every failure an actionable ::error:: annotation
         # instead of a traceback, including from modules added later.
-        cmd = exc.cmd if isinstance(exc.cmd, str) else " ".join(str(c) for c in exc.cmd)
-        gha.error(f"command failed (exit {exc.returncode}): {cmd}")
+        # Captured output never reached the log, so surface it before the
+        # annotation — otherwise a failing `terraform output` reports only an
+        # exit code.
+        for stream in (exc.stdout, exc.stderr):
+            if stream:
+                print(stream if isinstance(stream, str) else stream.decode(errors="replace"))
+        gha.error(f"command failed (exit {exc.returncode}): {_redact_cmd(exc.cmd)}")
         return 1
     return 0
 
