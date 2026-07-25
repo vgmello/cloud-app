@@ -172,7 +172,7 @@ def cmd_bootstrap_vars(args):
 
 
 def cmd_validate_lock(args):
-    registry.validate_names(args.environment, args.stack_name, args.caller_repo)
+    registry.validate_names(args.environment, args.stack_name, args.caller_repo, args.stack_file)
     stack_path = registry.resolve_stack_path(args.caller_root, args.stack_file)
 
     if not os.path.exists(stack_path):

