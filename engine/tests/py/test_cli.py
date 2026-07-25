@@ -247,6 +247,44 @@ def test_rotate_images_cli_invokes_az_per_image(tmp_path, monkeypatch, capsys):
     assert "reg/orders-api/main-main:sha1" in calls[0]
 
 
+def test_verify_deploy_cli_probes_the_expected_app(tmp_path, monkeypatch):
+    import json as _json
+
+    from cloudapp import cli, runner
+
+    tool = {"name": "orders-api", "apps": {"api": {"replicas": {"min": 1}}}, "functions": {}}
+    (tmp_path / "tool.dev.json").write_text(_json.dumps(tool))
+    (tmp_path / "dev.yml").write_text('naming_prefix: ""\nstate_backend:\n  type: azurerm\n')
+
+    calls = []
+
+    class _R:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, stdout=""):
+            self.stdout = stdout
+
+    def fake_run(cmd, check=False, capture=False):
+        calls.append(cmd)
+        if "revision" in cmd:
+            return _R('{"prov": "Provisioned", "running": "Running"}')
+        return _R("rev1\n")
+
+    monkeypatch.setattr(runner, "run", fake_run)
+
+    cli.main([
+        "verify-deploy",
+        "--tool-json", str(tmp_path / "tool.dev.json"),
+        "--environment", "dev",
+        "--platform-file", str(tmp_path / "dev.yml"),
+        "--resource-group", "rg-x",
+    ])
+
+    assert calls[0][:3] == ["az", "containerapp", "show"]
+    assert "ca-orders-api-dev" in calls[0]
+
+
 def test_prepare_custom_tf_stages_caller_files(tmp_path):
     app_root = tmp_path / "app"
     (app_root / "terraform").mkdir(parents=True)

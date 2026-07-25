@@ -53,6 +53,16 @@ inputs:
       NOT detected here; roll those out with a manual dispatch or with
       always_run_terraform: true.
     default: "false"
+  verify_deploy:
+    description: >-
+      After deploying, check that the manifest's container apps and function
+      apps exist and are healthy, failing the run when they are not. This is
+      what makes a half-built stack or a crash-looping image loud instead of
+      silently green. Set to "false" to skip.
+    default: "true"
+  verify_timeout:
+    description: Seconds to wait for every resource to become healthy.
+    default: "300"
 outputs:
   name:
     description: Resolved stack name (manifest name)
@@ -437,7 +447,26 @@ runs:
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
 
+    # Reality check, not bookkeeping: confirm the declared resources exist and
+    # are healthy. Runs after BOTH lanes — and even when neither changed
+    # anything — so a half-built stack cannot report success.
+    - name: Verify deployment
+      if: ${{ inputs.plan_only == 'false' && inputs.verify_deploy != 'false' }}
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+        VERIFY_TIMEOUT: ${{ inputs.verify_timeout }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp verify-deploy
+        --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
+        --environment "$DEPLOY_ENV"
+        --platform-file "${{ steps.platform.outputs.file }}"
+        --resource-group "${{ steps.bootstrap.outputs.resource_group }}"
+        --timeout "$VERIFY_TIMEOUT"
+
     - name: Write summary
+      if: always()
       shell: bash
       env:
         SHOULD_APPLY: ${{ steps.gate.outputs.should_apply }}

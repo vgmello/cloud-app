@@ -11,6 +11,10 @@ on:
         type: choice
         options: [dev, staging, prod]
         default: dev
+      always_run_terraform:
+        description: Force a full Terraform run (use to recover an incomplete deploy)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -35,6 +39,7 @@ jobs:
         with:
           env: ${{ inputs.environment || 'dev' }}
           plan_only: ${{ github.event_name == 'pull_request' }}
+          always_run_terraform: ${{ inputs.always_run_terraform || false }}
           app-id: ${{ secrets.APP_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
           app-secrets: |
