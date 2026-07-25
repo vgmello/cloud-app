@@ -47,6 +47,10 @@ runs:
         ref: ${{ inputs.caller-branch }}
         token: ${{ inputs.github-token }}
         path: caller-workspace
+        # Nothing here runs git against the caller repo afterwards, so don't
+        # leave the token sitting in caller-workspace/.git/config for the rest
+        # of the job.
+        persist-credentials: false
 
     - name: Install cloudapp dependencies
       shell: bash

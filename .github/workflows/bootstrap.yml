@@ -60,6 +60,9 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ inputs.repo }}
+          # Least privilege: this token is only used to check out the caller
+          # repo so the manifest can be read.
+          permission-contents: read
 
       - name: Run bootstrap
         uses: ./.github/actions/deploy-stack
