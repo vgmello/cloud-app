@@ -9,7 +9,7 @@ def test_azurerm_main_backend_lines():
     assert lines == [
         "resource_group_name=rg-tfstate",
         "storage_account_name=sttfstatedev",
-        "container_name=tfstate",
+        "container_name=orders-api-dev",
         "key=orders-api/dev.tfstate",
         "use_oidc=true",
         "use_azuread_auth=true",
@@ -109,3 +109,47 @@ def test_state_exists_false_and_skips_az_for_non_azurerm(tmp_path):
 
     assert backend.state_exists(tmp_path / "prod.yml", "n", "prod", fake_run) is False
     assert called == []
+
+
+def test_stack_container_bootstrap_uses_shared_container():
+    sb = {"type": "azurerm", "container": "tfstate"}
+    assert backend.stack_container(sb, "orders-api", "dev", "bootstrap") == "tfstate"
+
+
+def test_stack_container_main_is_per_stack_and_env():
+    sb = {"type": "azurerm", "container": "tfstate"}
+    assert backend.stack_container(sb, "orders-api", "dev") == "orders-api-dev"
+
+
+def test_stack_container_normalizes_trailing_hyphen():
+    sb = {"type": "azurerm", "container": "tfstate"}
+    # a trailing hyphen would otherwise produce the invalid "orders--dev"
+    assert backend.stack_container(sb, "orders-", "dev") == "orders-dev"
+
+
+def test_stack_container_rejects_overlong_name():
+    sb = {"type": "azurerm", "container": "tfstate"}
+    with pytest.raises(backend.BackendError, match="container name"):
+        backend.stack_container(sb, "a" * 60, "production")
+
+
+def test_render_uses_per_stack_container_for_main():
+    lines = backend.render(ENVDIR / "dev.yml", "orders-api", "dev", stack="main")
+    assert "container_name=orders-api-dev" in lines
+
+
+def test_render_uses_shared_container_for_bootstrap():
+    lines = backend.render(ENVDIR / "dev.yml", "orders-api", "dev", stack="bootstrap")
+    assert "container_name=tfstate" in lines
+
+
+def test_state_exists_probes_the_per_stack_container():
+    calls = []
+
+    def fake_run(cmd, check=False, capture=False):
+        calls.append(cmd)
+        return _Result(0, "true\n")
+
+    assert backend.state_exists(ENVDIR / "dev.yml", "orders-api", "dev", fake_run) is True
+    assert "orders-api-dev" in calls[0]
+    assert "tfstate" not in calls[0]

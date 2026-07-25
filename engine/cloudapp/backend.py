@@ -1,5 +1,6 @@
 """Terraform backend configuration (azurerm or s3) from platform config."""
 
+import re
 from pathlib import Path
 
 from .yamlcompat import load_yaml
@@ -26,6 +27,30 @@ def state_key(name, env, stack="main"):
     return f"{name}/{env}.{suffix}"
 
 
+_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+MAX_CONTAINER = 63
+
+
+def stack_container(sb, name, env, stack="main"):
+    """Blob container holding one stack's Terraform state.
+
+    The bootstrap stack keeps its state in the shared platform container: a
+    single per-environment control-plane identity owns every bootstrap state,
+    callers never hold it, and Terraform cannot init into a container the same
+    run has not created yet. The main stack gets its own container so the
+    plan/apply grants can be scoped to it instead of to every stack's state.
+    """
+    if stack == "bootstrap":
+        return sb["container"]
+    candidate = _NON_ALNUM.sub("-", f"{name}-{env}".lower()).strip("-")
+    if len(candidate) > MAX_CONTAINER:
+        raise BackendError(
+            f"state container name '{candidate}' exceeds {MAX_CONTAINER} characters; "
+            "shorten the stack name or the environment name"
+        )
+    return candidate
+
+
 def state_exists(platform_path, name, env, run, stack="main"):
     """True if the Terraform state blob for this tool+env already exists.
 
@@ -44,7 +69,7 @@ def state_exists(platform_path, name, env, run, stack="main"):
     result = run(
         ["az", "storage", "blob", "exists",
          "--account-name", sb["storage_account"],
-         "--container-name", sb["container"],
+         "--container-name", stack_container(sb, name, env, stack),
          "--name", state_key(name, env, stack),
          "--auth-mode", "login",
          "--query", "exists", "-o", "tsv"],
@@ -64,7 +89,7 @@ def render(platform_path, name, env, stack="main"):
         return [
             f"resource_group_name={sb['resource_group']}",
             f"storage_account_name={sb['storage_account']}",
-            f"container_name={sb['container']}",
+            f"container_name={stack_container(sb, name, env, stack)}",
             f"key={key}",
             "use_oidc=true",
             "use_azuread_auth=true",
