@@ -69,6 +69,23 @@
       opacity 620ms var(--ease-out-quint) var(--reveal-delay, 0ms),
       transform 620ms var(--ease-out-quint) var(--reveal-delay, 0ms);
   }
+
+  .connector {
+    stroke: var(--color-line);
+    stroke-width: 1;
+  }
+
+  .connector-draw {
+    stroke-dasharray: 240;
+    stroke-dashoffset: 240;
+    animation: connector-draw 900ms var(--ease-out-quint) forwards;
+  }
+
+  @keyframes connector-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -83,6 +100,11 @@
 
   .is-revealed {
     transition: opacity 120ms linear;
+  }
+
+  .connector-draw {
+    stroke-dashoffset: 0;
+    animation: none;
   }
 
   *,
