@@ -134,12 +134,17 @@ describe("initConnectors", () => {
     expect(replaceChildren).not.toHaveBeenCalled();
   });
 
-  it("coalesces a burst of transitionend events into a single redraw", async () => {
-    // Scrolling the section into view fires opacity + transform
-    // transitionend for every one of the 5 reveal targets — 10 events from
-    // one scroll. Redrawing on each would call draw() (replaceChildren() +
-    // re-adding connector-draw) 10 times, restarting the 900ms line-draw
-    // animation from zero on every call and making the lines stutter.
+  it("coalesces a staggered burst of transitionend events into a single redraw", () => {
+    // reveal.ts staggers its 5 `[data-reveal]` descendants via
+    // applyStagger() (STAGGER_MS = 60, delays 0/60/120/180/240ms), and each
+    // has a 620ms transition — so their transitionend events land roughly
+    // 60ms apart, each in its *own* animation frame, not bunched into one.
+    // A requestAnimationFrame-flag coalescer resets between every one of
+    // those frames and so calls draw() once per event (5 times), each call
+    // restarting the 900ms connector-draw animation from zero and making
+    // the lines stutter. A trailing debounce must instead wait out a quiet
+    // period and redraw exactly once, after the last event.
+    vi.useFakeTimers();
     vi.stubGlobal(
       "matchMedia",
       vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn() }),
@@ -153,31 +158,26 @@ describe("initConnectors", () => {
     replaceChildren.mockClear(); // drop the call made by the initial draw()
 
     const container = document.querySelector<HTMLElement>("[data-connectors]")!;
-    const burst = [
-      "opacity",
-      "transform",
-      "opacity",
-      "transform",
-      "opacity",
-      "transform",
-      "opacity",
-      "transform",
-      "opacity",
-      "transform",
-    ];
-    for (const propertyName of burst) {
-      container.dispatchEvent(transitionEnd(propertyName));
+
+    // Five staggered transform completions, 60ms apart — matches the real
+    // reveal stagger exactly.
+    for (let i = 0; i < 5; i++) {
+      container.dispatchEvent(transitionEnd("transform"));
+      vi.advanceTimersByTime(60);
     }
 
-    // No synchronous redraw from the burst — it must be coalesced.
+    // Still within the quiet window after the last event — no redraw yet.
     expect(replaceChildren).not.toHaveBeenCalled();
 
-    await nextAnimationFrame();
+    // Let the quiet period fully elapse after the last event.
+    vi.advanceTimersByTime(150);
 
     expect(replaceChildren).toHaveBeenCalledTimes(1);
     expect(
       document.querySelectorAll("[data-connector-canvas] line"),
     ).toHaveLength(2);
+
+    vi.useRealTimers();
   });
 
   it("skips the drawing animation under reduced motion but still draws lines", () => {

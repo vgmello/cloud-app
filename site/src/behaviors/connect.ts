@@ -62,17 +62,28 @@ export function initConnectors(root: ParentNode = document): void {
     // re-adds `connector-draw`) repeatedly, restarting the line-draw
     // animation from zero each time and making the lines stutter. Only the
     // `transform` property actually moves anything `draw()` cares about, so
-    // ignore `opacity` events; and coalesce the remaining ones through
-    // `requestAnimationFrame` so a burst still produces exactly one redraw.
-    let redrawScheduled = false;
+    // ignore `opacity` events.
+    //
+    // The remaining `transform` events are *not* bunched into one animation
+    // frame: `applyStagger()` in reveal.ts staggers the `[data-reveal]`
+    // descendants of this section by `STAGGER_MS` (60ms) each, so their
+    // 620ms transitions finish roughly 60ms apart — each completion lands in
+    // its own frame. A `requestAnimationFrame` coalescing flag only merges
+    // events within the same ~16ms frame, so it would still call `draw()`
+    // once per staggered element. Instead, use a trailing debounce: reset a
+    // timer on every qualifying event, and only redraw once the events have
+    // stopped arriving for a quiet period comfortably longer than the
+    // 60ms stagger gap. That way one scroll produces exactly one redraw,
+    // using the final settled geometry.
+    const REDRAW_DEBOUNCE_MS = 150;
+    let redrawTimer: ReturnType<typeof setTimeout> | undefined;
     container.addEventListener("transitionend", (event) => {
       if (event.propertyName !== "transform") return;
-      if (redrawScheduled) return;
-      redrawScheduled = true;
-      requestAnimationFrame(() => {
-        redrawScheduled = false;
+      if (redrawTimer !== undefined) clearTimeout(redrawTimer);
+      redrawTimer = setTimeout(() => {
+        redrawTimer = undefined;
         draw();
-      });
+      }, REDRAW_DEBOUNCE_MS);
     });
   }
 }
