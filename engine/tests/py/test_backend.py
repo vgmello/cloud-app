@@ -121,10 +121,28 @@ def test_stack_container_main_is_per_stack_and_env():
     assert backend.stack_container(sb, "orders-api", "dev") == "orders-api-dev"
 
 
-def test_stack_container_normalizes_trailing_hyphen():
+def test_stack_container_rejects_trailing_hyphen():
+    # normalizing "orders-" would collide with "orders"
     sb = {"type": "azurerm", "container": "tfstate"}
-    # a trailing hyphen would otherwise produce the invalid "orders--dev"
-    assert backend.stack_container(sb, "orders-", "dev") == "orders-dev"
+    with pytest.raises(backend.BackendError, match="stack name"):
+        backend.stack_container(sb, "orders-", "dev")
+
+
+def test_stack_container_rejects_consecutive_hyphens():
+    # normalizing "orders--api" would collide with "orders-api"
+    sb = {"type": "azurerm", "container": "tfstate"}
+    with pytest.raises(backend.BackendError, match="stack name"):
+        backend.stack_container(sb, "orders--api", "dev")
+
+
+def test_stack_container_is_injective_for_distinct_names():
+    sb = {"type": "azurerm", "container": "tfstate"}
+    assert backend.stack_container(sb, "orders", "dev") == "orders-dev"
+    assert backend.stack_container(sb, "orders-api", "dev") == "orders-api-dev"
+    # the names that would have collided are rejected outright
+    for bad in ("orders-", "orders--api", "-orders", "Orders"):
+        with pytest.raises(backend.BackendError):
+            backend.stack_container(sb, bad, "dev")
 
 
 def test_stack_container_rejects_overlong_name():

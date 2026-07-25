@@ -163,12 +163,17 @@ state_backend:
 - **azurerm** — reached via `azure/login` OIDC (`use_oidc`, `use_azuread_auth`).
   The state store lives in `rg-tfstate`, outside the tool RG, so the identities
   need data-plane grants **on the state container**: bootstrap+apply → Storage
-  Blob Data Contributor, plan → Storage Blob Data Reader. These are now created
-  automatically, scoped to the tfstate container: the per-tool bootstrap stack
-  grants plan (Reader) and apply (Contributor); the manual
+  Blob Data Contributor, plan → Storage Blob Data Reader. Each stack gets its
+  own per-(stack, environment) state container (e.g. `<stack>-<env>`), created
+  during bootstrap; the plan/apply grants are scoped to that container, not to
+  the whole tfstate account. The bootstrap stack's own state stays in the
+  shared platform container (`bootstrap.tfstate`), grantable only to the
+  shared bootstrap identity. The per-tool bootstrap stack grants plan (Reader)
+  and apply (Contributor) on its stack's own container; the manual
   `terraform/azure/subscription-bootstrap/` stack grants the bootstrap identity
-  (Contributor) for its own `bootstrap.tfstate`. Both take the state account id
-  from `state_backend` (via `bootstrap-vars`) and are skipped for s3.
+  (Contributor) on the shared platform container for `bootstrap.tfstate`. Both
+  take the state account id from `state_backend` (via `bootstrap-vars`) and
+  are skipped for s3.
 - **s3** — reached via `AssumeRoleWithWebIdentity` into `role_arn`. Resources
   stay Azure; the AWS login authorizes only the state backend, so an S3 run
   performs two OIDC logins (AWS for state, Azure for the plan/apply identity).
@@ -199,8 +204,10 @@ pieces are not implemented yet:
 
 - **State-container role assignments (wired).** The bootstrap stacks now create
   the tfstate data-plane grants (plan Reader, apply/bootstrap Contributor),
-  scoped to the container. Still needs a live run to confirm RBAC propagates
-  before the first `terraform init`.
+  scoped to each stack's own per-(stack, environment) state container (the
+  bootstrap stack's own state grant stays scoped to the shared platform
+  container). Still needs a live run to confirm RBAC propagates before the
+  first `terraform init`.
 - **Bootstrap role ABAC** — the bootstrap role assignment constrains
   `roleAssignments/write` to a fixed set of role-definition GUIDs (Reader,
   Contributor, Storage Blob Data Reader/Contributor, Key Vault Reader) via an

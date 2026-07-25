@@ -225,11 +225,12 @@ runs:
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp docker-build
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --registry "${{ steps.platform.outputs.registry }}"
         --git-sha "${{ github.sha }}"
 
@@ -251,11 +252,12 @@ runs:
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp state-exists
         --platform-file "${{ steps.platform.outputs.file }}"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
 
     - name: Resolve config
@@ -292,13 +294,14 @@ runs:
         TF_IN_AUTOMATION: "true"
         IMAGE_TAGS: ${{ steps.build.outputs.image-tags || '{}' }}
         TARGETS: module.keyvault
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp terraform-deploy
         --terraform-dir "${{ github.action_path }}/../../../terraform/azure"
         --tfvars-file tfvars.json
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
         --image-tags "$IMAGE_TAGS"
@@ -379,13 +382,14 @@ runs:
         DEPLOY_ENV: ${{ inputs.env }}
         TF_IN_AUTOMATION: "true"
         IMAGE_TAGS: ${{ steps.build.outputs.image-tags || '{}' }}
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp terraform-deploy
         --terraform-dir "${{ github.action_path }}/../../../terraform/azure"
         --tfvars-file tfvars.json
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
         --image-tags "$IMAGE_TAGS"
@@ -402,12 +406,13 @@ runs:
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp deploy-functions
         --terraform-dir "${{ github.action_path }}/../../../terraform/azure"
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
 
