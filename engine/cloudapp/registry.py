@@ -16,20 +16,29 @@ import subprocess
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
+# manifest path inside the caller workspace: no shell metacharacters, no
+# absolute paths, no traversal. The gate does not rely on quoting discipline
+# at downstream call sites.
+STACK_FILE_RE = re.compile(r"^[A-Za-z0-9._/-]{1,255}$")
+
 
 class RegistryError(Exception):
     pass
 
 
-def validate_names(env, stack_name, caller_repo):
+def validate_names(env, stack_name, caller_repo, stack_file):
     """Reject any caller-controlled identifier that could escape a path or a
     git command before it is ever interpolated. Runs first — it is the gate."""
-    if not NAME_RE.match(env):
+    if not NAME_RE.fullmatch(env):
         raise RegistryError(f"invalid environment name '{env}'")
-    if not NAME_RE.match(stack_name):
+    if not NAME_RE.fullmatch(stack_name):
         raise RegistryError(f"invalid stack name '{stack_name}'")
-    if not REPO_RE.match(caller_repo):
+    if not REPO_RE.fullmatch(caller_repo):
         raise RegistryError(f"invalid caller repo '{caller_repo}'")
+    if not STACK_FILE_RE.fullmatch(stack_file or ""):
+        raise RegistryError(f"invalid stack file '{stack_file}'")
+    if stack_file.startswith("/") or ".." in stack_file.split("/"):
+        raise RegistryError(f"invalid stack file '{stack_file}'")
 
 
 def resolve_stack_path(caller_root, stack_file):

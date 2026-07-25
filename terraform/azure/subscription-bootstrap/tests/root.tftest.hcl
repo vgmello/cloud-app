@@ -65,3 +65,28 @@ run "bootstrap_identity_gets_state_write" {
     error_message = "bootstrap state grant must be scoped to the tfstate container"
   }
 }
+
+run "bootstrap_role_gains_no_storage_actions" {
+  command = plan
+
+  variables {
+    subscription_id  = "00000000-0000-0000-0000-000000000000"
+    location         = "eastus2"
+    environment      = "dev"
+    trusted_repo     = "vgmello/cloud-app"
+    state_account_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/sttfstatedev"
+  }
+
+  assert {
+    condition = length([
+      for a in azurerm_role_definition.bootstrap.permissions[0].actions :
+      a if startswith(a, "Microsoft.Storage/")
+    ]) == 0
+    error_message = "the subscription-scoped bootstrap role must not gain storage actions"
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.state_container[0].scope == var.state_account_id
+    error_message = "container-create rights must be scoped to the state account only"
+  }
+}

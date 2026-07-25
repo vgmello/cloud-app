@@ -197,7 +197,7 @@ def test_bootstrap_vars_command_delegated_federates_to_caller(capsys):
     assert out["apply_subjects"] == ["repo:acme/orders:environment:prod"]
     assert out["name"] == "orders-api"
     assert out["state_account_id"].endswith("/storageAccounts/sttfstatedev")
-    assert out["state_container"] == "tfstate"
+    assert out["stack_state_container"] == "orders-api-prod"
 
 
 def test_bootstrap_vars_bad_mode_returns_nonzero(capsys):

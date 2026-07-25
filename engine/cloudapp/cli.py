@@ -177,7 +177,11 @@ def cmd_bootstrap_vars(args):
         # grant in the bootstrap stack. Empty when not configured.
         "acr_id": (platform.get("acr") or {}).get("id", ""),
         "state_account_id": state_account_id,
-        "state_container": state.get("container", "") if state_account_id else "",
+        "stack_state_container": (
+            backend.stack_container(state, args.name, args.environment)
+            if state_account_id
+            else ""
+        ),
         "plan_subjects": identity.federation_subjects(
             "plan", args.mode, args.app_repo, args.central_repo, args.environment
         ),
@@ -189,7 +193,7 @@ def cmd_bootstrap_vars(args):
 
 
 def cmd_validate_lock(args):
-    registry.validate_names(args.environment, args.stack_name, args.caller_repo)
+    registry.validate_names(args.environment, args.stack_name, args.caller_repo, args.stack_file)
     stack_path = registry.resolve_stack_path(args.caller_root, args.stack_file)
 
     if not os.path.exists(stack_path):
