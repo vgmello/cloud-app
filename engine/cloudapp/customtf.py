@@ -25,11 +25,24 @@ ALLOWED_PROVIDERS = {
     "azapi": "Azure/azapi",
 }
 
-TF_SUFFIXES = (".tf", ".tf.json")
+# Only plain .tf is accepted. .tf.json was dropped: the forbidden-block scan
+# below is HCL-only, so a JSON provider/terraform/backend block would pass
+# validation unchecked, and nothing in the feature needs JSON syntax.
+TF_SUFFIXES = (".tf",)
 
 # Top-of-line block openers the caller may not declare: providers come from the
 # manifest allowlist, and the backend/terraform settings belong to the platform.
 _FORBIDDEN_BLOCK = re.compile(r'^\s*(provider\s+"|terraform\s*\{|backend\s+")', re.MULTILINE)
+
+# Matches a heredoc introducer (`<<EOT` / `<<-EOT`) anywhere on a line, so its
+# body can be excluded from the forbidden-block scan below.
+_HEREDOC_MARKER = re.compile(r"<<-?([A-Za-z_][A-Za-z0-9_]*)")
+
+# Platform-owned files that survive a prepare() cleanup pass. _providers.g.tf
+# is generated but NOT listed here — it is always removed up front and
+# rewritten only when the manifest still declares providers.
+_PLATFORM_FILES = {"_context.tf"}
+_GENERATED_PROVIDERS_FILE = "_providers.g.tf"
 
 
 class CustomTfError(Exception):
@@ -38,6 +51,46 @@ class CustomTfError(Exception):
 
 def _entry(tool):
     return (tool or {}).get("terraform")
+
+
+def _blank_block_comments(text):
+    """Replace /* ... */ spans with equivalent whitespace (newlines kept) so a
+    comment-prefixed line like `/**/provider "x" {` can't hide a real block
+    from the line-anchored forbidden-block scan."""
+
+    def repl(match):
+        return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
+
+    return re.sub(r"/\*.*?\*/", repl, text, flags=re.DOTALL)
+
+
+def _blank_heredoc_bodies(text):
+    """Blank out heredoc body lines so a heredoc that merely starts with
+    `provider "` as string content isn't mistaken for a real block."""
+    lines = text.split("\n")
+    out = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        out.append(line)
+        match = _HEREDOC_MARKER.search(line)
+        i += 1
+        if not match:
+            continue
+        marker = match.group(1)
+        while i < n and lines[i].strip() != marker:
+            out.append("")
+            i += 1
+        if i < n:
+            out.append(lines[i])
+            i += 1
+    return "\n".join(out)
+
+
+def _has_forbidden_block(text):
+    scan_text = _blank_heredoc_bodies(_blank_block_comments(text))
+    return bool(_FORBIDDEN_BLOCK.search(scan_text))
 
 
 def _resolve_dir(entry, app_root):
@@ -68,7 +121,11 @@ def collect(tool, app_root):
             raise CustomTfError(
                 f"'{path.name}' uses a reserved name: files starting with '_' belong to the platform"
             )
-        if _FORBIDDEN_BLOCK.search(path.read_text()):
+        try:
+            text = path.read_text()
+        except UnicodeDecodeError as exc:
+            raise CustomTfError(f"'{path.name}' is not valid UTF-8: {exc}") from exc
+        if _has_forbidden_block(text):
             raise CustomTfError(
                 f"'{path.name}' declares a provider/terraform/backend block; "
                 f"declare providers under the manifest's terraform.providers instead"
@@ -105,17 +162,39 @@ def render_providers(providers):
 
 
 def prepare(tool, app_root, custom_dir):
-    """Copy caller .tf into custom_dir and write _providers.g.tf. Returns names copied."""
-    files = collect(tool, app_root)
-    if not files:
-        return []
+    """Clean custom_dir back to platform-owned files, copy in the caller's
+    current .tf, and (re)write _providers.g.tf. Returns names copied.
 
+    Cleans unconditionally — even when the manifest has no `terraform:` field
+    and even when the caller dir has zero .tf files — because custom_dir lives
+    in the action checkout, which self-hosted runners reuse across jobs. A
+    stale file from a previous run, or another app's file on a shared runner,
+    must not survive into this run's plan/apply.
+    """
     destination = Path(custom_dir)
+    try:
+        existing = list(destination.iterdir())
+    except FileNotFoundError as exc:
+        raise CustomTfError(f"custom terraform directory '{custom_dir}' not found") from exc
+
+    for entry in existing:
+        # _PLATFORM_FILES excludes _providers.g.tf on purpose: it is
+        # regenerated below (or dropped) on every prepare() run.
+        if entry.is_file() and entry.name in _PLATFORM_FILES:
+            continue
+        if entry.is_dir():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+
+    files = collect(tool, app_root)
     for path in files:
         shutil.copyfile(path, destination / path.name)
 
-    body = render_providers(_entry(tool).get("providers", []))
-    if body is not None:
-        (destination / "_providers.g.tf").write_text(body)
+    tf_entry = _entry(tool)
+    if tf_entry:
+        body = render_providers(tf_entry.get("providers", []))
+        if body is not None:
+            (destination / _GENERATED_PROVIDERS_FILE).write_text(body)
 
     return [p.name for p in files]
