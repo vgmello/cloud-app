@@ -79,6 +79,21 @@ def test_invalid_manifest_returns_nonzero_and_writes_nothing(tmp_path, monkeypat
     assert not (out / "tool.dev.json").exists()
 
 
+def test_parse_manifest_fails_fast_on_bad_terraform_dir(tmp_path, monkeypatch, capsys):
+    """Caller-terraform validation runs during parse-manifest, before the
+    bootstrap creates the RG/identities — a typo'd dir must fail here, not
+    only later in prepare-custom-tf."""
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    out = tmp_path / "ct"
+    rc = cli.main([
+        "parse-manifest", "--manifest", str(FIXTURES / "terraform-bad-dir.yml"),
+        "--output-dir", str(out), "--app-root", str(tmp_path),
+    ])
+    assert rc == 1
+    assert "::error::" in capsys.readouterr().out
+    assert not (out / "tool.dev.json").exists()
+
+
 def test_resolve_config_writes_tfvars(tmp_path):
     tools = tmp_path / "tool.dev.json"
     cli.main([

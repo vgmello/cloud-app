@@ -42,6 +42,14 @@ def _write_json(path, data):
 
 def cmd_parse_manifest(args):
     name, environments, tools, docker = manifest.parse(args.manifest, args.app_root)
+    # Validate caller-supplied terraform now (cheap, pure — no bootstrap has
+    # run yet) so a typo in `terraform:` fails fast instead of surfacing only
+    # after prepare-custom-tf, which runs after the RG/identities exist.
+    for tool in tools.values():
+        customtf.collect(tool, args.app_root)
+        entry = tool.get("terraform")
+        if entry:
+            customtf.render_providers(entry.get("providers", []))
     code_functions = any(
         manifest.function_mode(f) == "code"
         for tool in tools.values()
