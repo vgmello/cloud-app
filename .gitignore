@@ -20,3 +20,6 @@ htmlcov/
 terraform/azure/custom/*
 !terraform/azure/custom/_context.tf
 !terraform/azure/custom/_versions.tf
+
+# Brainstorming visual companion sessions
+.superpowers/
