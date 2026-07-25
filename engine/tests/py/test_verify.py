@@ -175,8 +175,11 @@ def test_verify_raises_when_budget_exhausted():
             return _Res(0, '{"prov": "Provisioned", "running": "Processing"}')
         return _Res(0, "rev1\n")
 
+    slept = []
     with pytest.raises(verify.VerifyError, match="ca-orders-api-dev"):
-        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=30, sleep=lambda _: None)
+        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=30, sleep=slept.append)
+    # timeout=30, interval=10 -> 3 probe rounds, 2 sleeps (none after the final attempt)
+    assert slept == [10, 10]
 
 
 def test_verify_fails_fast_on_terminal_state():
@@ -201,3 +204,60 @@ def test_verify_no_resources_is_noop():
     run = _runner([])
     assert verify.verify(tool, "", "dev", "rg-x", run, sleep=lambda _: None) == 0
     assert run.calls == []
+
+
+def test_verify_multi_resource_waits_for_all_and_skips_healthy():
+    tool = {
+        "name": "orders-api",
+        "apps": {
+            "fast": {"replicas": {"min": 1}},
+            "slow": {"replicas": {"min": 1}},
+        },
+        "functions": {},
+    }
+    fast = "ca-orders-api-fast-dev"
+    slow = "ca-orders-api-slow-dev"
+    calls = []
+    rounds = {"slow": 0}
+
+    def run(cmd, check=False, capture=False):
+        calls.append(cmd)
+        name = fast if fast in cmd else slow
+        if "revision" not in cmd:
+            return _Res(0, "rev1\n")
+        if name == fast:
+            return _Res(0, '{"prov": "Provisioned", "running": "Running"}')
+        rounds["slow"] += 1
+        if rounds["slow"] == 1:
+            return _Res(0, '{"prov": "Provisioning", "running": "Processing"}')
+        return _Res(0, '{"prov": "Provisioned", "running": "Running"}')
+
+    slept = []
+    n = verify.verify(tool, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
+
+    assert n == 2
+    assert slept == [10]
+    fast_probes = sum(1 for c in calls if fast in c)
+    slow_probes = sum(1 for c in calls if slow in c)
+    assert fast_probes == 2, "healthy resource must not be re-probed"
+    assert slow_probes == 4, "pending resource must be re-probed each round"
+
+
+def test_verify_fails_when_one_resource_is_terminal_though_another_is_healthy():
+    tool = {
+        "name": "orders-api",
+        "apps": {"good": {"replicas": {"min": 1}}, "bad": {"replicas": {"min": 1}}},
+        "functions": {},
+    }
+
+    def run(cmd, check=False, capture=False):
+        if "revision" not in cmd:
+            return _Res(0, "rev1\n")
+        if "bad" in " ".join(cmd):
+            return _Res(0, '{"prov": "Failed", "running": "Stopped"}')
+        return _Res(0, '{"prov": "Provisioned", "running": "Running"}')
+
+    slept = []
+    with pytest.raises(verify.VerifyError, match="bad"):
+        verify.verify(tool, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
+    assert slept == []
