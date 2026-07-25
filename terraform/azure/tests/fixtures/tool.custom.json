@@ -1,0 +1,8 @@
+{
+  "terraform": {
+    "dir": "./tests/fixtures/custom",
+    "providers": [
+      { "name": "random", "source": "hashicorp/random", "version": "~> 3" }
+    ]
+  }
+}
