@@ -428,24 +428,6 @@ runs:
         --stack main
         ${{ inputs.plan_only == 'true' && '--plan-only' || '' }}
 
-    # Reality check, not bookkeeping: confirm the declared resources exist and
-    # are healthy. Runs after BOTH lanes — and even when neither changed
-    # anything — so a half-built stack cannot report success.
-    - name: Verify deployment
-      if: ${{ inputs.plan_only == 'false' && inputs.verify_deploy != 'false' }}
-      shell: bash
-      env:
-        DEPLOY_ENV: ${{ inputs.env }}
-        VERIFY_TIMEOUT: ${{ inputs.verify_timeout }}
-      run: >-
-        PYTHONPATH="${{ github.action_path }}/../../../engine"
-        python3 -m cloudapp verify-deploy
-        --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
-        --environment "$DEPLOY_ENV"
-        --platform-file "${{ steps.platform.outputs.file }}"
-        --resource-group "${{ steps.bootstrap.outputs.resource_group }}"
-        --timeout "$VERIFY_TIMEOUT"
-
     # Code (non-container) functions deploy their zip after apply, via the SCM
     # endpoint. Runs on the caller's runner — in production a VNet self-hosted
     # runner that can reach the private SCM endpoint. Independent of the apply
@@ -464,6 +446,24 @@ runs:
         --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
+
+    # Reality check, not bookkeeping: confirm the declared resources exist and
+    # are healthy. Runs after BOTH lanes — and even when neither changed
+    # anything — so a half-built stack cannot report success.
+    - name: Verify deployment
+      if: ${{ inputs.plan_only == 'false' && inputs.verify_deploy != 'false' }}
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+        VERIFY_TIMEOUT: ${{ inputs.verify_timeout }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp verify-deploy
+        --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
+        --environment "$DEPLOY_ENV"
+        --platform-file "${{ steps.platform.outputs.file }}"
+        --resource-group "${{ steps.bootstrap.outputs.resource_group }}"
+        --timeout "$VERIFY_TIMEOUT"
 
     - name: Write summary
       shell: bash
