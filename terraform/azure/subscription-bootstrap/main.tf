@@ -101,3 +101,30 @@ resource "azurerm_role_assignment" "bootstrap_state" {
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.bootstrap.principal_id
 }
+
+# Container CRUD for the bootstrap identity, in its own role assigned ONLY at
+# the state account. Kept out of the cloudapp-bootstrap role because that role
+# is assigned at subscription scope, where these actions would reach every
+# storage account in the subscription (app workload + function backing stores).
+resource "azurerm_role_definition" "state_container" {
+  count = var.state_account_id == "" ? 0 : 1
+  name  = "cloudapp-state-container-${var.environment}"
+  scope = local.scope
+
+  permissions {
+    actions = [
+      "Microsoft.Storage/storageAccounts/blobServices/containers/read",
+      "Microsoft.Storage/storageAccounts/blobServices/containers/write",
+    ]
+    not_actions = []
+  }
+
+  assignable_scopes = [local.scope]
+}
+
+resource "azurerm_role_assignment" "state_container" {
+  count              = var.state_account_id == "" ? 0 : 1
+  scope              = var.state_account_id
+  role_definition_id = azurerm_role_definition.state_container[0].role_definition_resource_id
+  principal_id       = azurerm_user_assigned_identity.bootstrap.principal_id
+}

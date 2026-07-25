@@ -160,7 +160,11 @@ def cmd_bootstrap_vars(args):
         # grant in the bootstrap stack. Empty when not configured.
         "acr_id": (platform.get("acr") or {}).get("id", ""),
         "state_account_id": state_account_id,
-        "state_container": state.get("container", "") if state_account_id else "",
+        "stack_state_container": (
+            backend.stack_container(state, args.name, args.environment)
+            if state_account_id
+            else ""
+        ),
         "plan_subjects": identity.federation_subjects(
             "plan", args.mode, args.app_repo, args.central_repo, args.environment
         ),
