@@ -114,3 +114,10 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+@media print {
+  .will-reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
