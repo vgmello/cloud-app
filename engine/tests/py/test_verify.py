@@ -59,6 +59,14 @@ def test_expected_resources_skips_static_sites():
     assert verify.expected_resources(tool, "", "dev") == []
 
 
+def test_expected_resources_missing_replicas_requires_running():
+    # unspecified replicas means always-on (manifest.REPLICA_DEFAULTS min=1),
+    # so the check must fail closed rather than skip the running requirement
+    tool = {"name": "orders-api", "apps": {"api": {}}, "functions": {}}
+    got = verify.expected_resources(tool, "", "dev")
+    assert got[0]["require_running"] is True
+
+
 def test_check_resource_healthy_container_app():
     run = _runner([
         _Res(0, "ca-orders-api-dev--abc123\n"),
@@ -67,6 +75,9 @@ def test_check_resource_healthy_container_app():
     res = {"kind": "containerapp", "name": "ca-orders-api-dev", "require_running": True}
     state, _ = verify.check_resource(res, "rg-x", run)
     assert state == verify.HEALTHY
+    # the revision parsed from the first probe must be the one queried
+    assert run.calls[1][:4] == ["az", "containerapp", "revision", "show"]
+    assert "ca-orders-api-dev--abc123" in run.calls[1]
 
 
 def test_check_resource_missing_app_is_terminal():

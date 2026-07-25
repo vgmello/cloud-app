@@ -26,15 +26,23 @@ def expected_resources(tool, prefix, env):
 
     Static sites are excluded: no revisions and no image. A container app only
     has to be *running* when it declares at least one replica — a scale-to-zero
-    app is legitimately idle and must not fail the check.
+    app is legitimately idle and must not fail the check. A missing replicas
+    key defaults to requiring a running revision (manifest.REPLICA_DEFAULTS min=1),
+    ensuring the check fails closed — only an explicit min: 0 may be idle.
     """
     resources = []
     for app_key, app in (tool.get("apps") or {}).items():
         replicas = app.get("replicas") or {}
+        # A missing replicas/min means always-on (manifest.REPLICA_DEFAULTS), so
+        # default to requiring a running revision — the check must fail closed.
+        # Only an explicit min: 0 (scale-to-zero) may be idle.
+        min_replicas = replicas.get("min")
+        if min_replicas is None:
+            min_replicas = 1
         resources.append({
             "kind": "containerapp",
             "name": naming.container_app_name(tool, prefix, env, app_key),
-            "require_running": (replicas.get("min") or 0) > 0,
+            "require_running": min_replicas > 0,
         })
     for func_key in (tool.get("functions") or {}):
         resources.append({
