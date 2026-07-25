@@ -7,6 +7,7 @@ anything, which is what makes a half-built stack loud instead of silently green.
 
 import json
 import re
+import time
 
 from . import naming
 
@@ -15,6 +16,8 @@ NOT_FOUND = re.compile(r"ResourceNotFound|was not found|could not be found", re.
 HEALTHY = "healthy"
 PENDING = "pending"
 FAILED = "failed"
+
+POLL_INTERVAL = 10
 
 
 class VerifyError(Exception):
@@ -119,3 +122,44 @@ def check_resource(resource, resource_group, run):
     if resource["kind"] == "containerapp":
         return _check_container_app(resource, resource_group, run)
     return _check_function_app(resource, resource_group, run)
+
+
+def verify(tool, prefix, env, resource_group, run, timeout=300, sleep=time.sleep,
+           interval=POLL_INTERVAL):
+    """Poll every declared resource until all are healthy or the budget expires.
+
+    Raises VerifyError as soon as any resource reaches a terminal state, so a
+    genuinely broken deploy fails fast instead of waiting out the timeout.
+    """
+    resources = expected_resources(tool, prefix, env)
+    if not resources:
+        print("no verifiable resources declared")
+        return 0
+
+    attempts = max(1, int(timeout // interval))
+    pending = list(resources)
+    details = {}
+    for attempt in range(1, attempts + 1):
+        still_pending = []
+        for resource in pending:
+            state, detail = check_resource(resource, resource_group, run)
+            details[resource["name"]] = detail
+            if state == FAILED:
+                raise VerifyError(f"{resource['name']}: {detail}")
+            if state != HEALTHY:
+                still_pending.append(resource)
+            else:
+                print(f"verified {resource['name']} ({detail})")
+        pending = still_pending
+        if not pending:
+            print(f"verified {len(resources)} resource(s)")
+            return len(resources)
+        if attempt < attempts:
+            sleep(interval)
+
+    unhealthy = ", ".join(f"{r['name']} [{details.get(r['name'], 'unknown')}]" for r in pending)
+    raise VerifyError(
+        f"not healthy after {timeout}s: {unhealthy}. "
+        "Check the container logs; if the stack is incomplete, re-run with "
+        "always_run_terraform: true."
+    )

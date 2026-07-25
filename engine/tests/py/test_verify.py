@@ -1,3 +1,5 @@
+import pytest
+
 from cloudapp import verify
 
 
@@ -138,3 +140,64 @@ def test_check_resource_function_stopped_is_pending():
     res = {"kind": "functionapp", "name": "func-orders-api-dev", "require_running": True}
     state, _ = verify.check_resource(res, "rg-x", run)
     assert state == verify.PENDING
+
+
+ONE_APP = {"name": "orders-api", "apps": {"api": {"replicas": {"min": 1}}}, "functions": {}}
+
+
+def test_verify_passes_when_healthy_immediately():
+    run = _runner([
+        _Res(0, "rev1\n"),
+        _Res(0, '{"prov": "Provisioned", "running": "Running"}'),
+    ])
+    slept = []
+    n = verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
+    assert n == 1
+    assert slept == []
+
+
+def test_verify_retries_until_healthy():
+    run = _runner([
+        _Res(0, "rev1\n"),
+        _Res(0, '{"prov": "Provisioning", "running": "Processing"}'),
+        _Res(0, "rev1\n"),
+        _Res(0, '{"prov": "Provisioned", "running": "Running"}'),
+    ])
+    slept = []
+    n = verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
+    assert n == 1
+    assert slept == [10]
+
+
+def test_verify_raises_when_budget_exhausted():
+    def run(cmd, check=False, capture=False):
+        if "revision" in cmd:
+            return _Res(0, '{"prov": "Provisioned", "running": "Processing"}')
+        return _Res(0, "rev1\n")
+
+    with pytest.raises(verify.VerifyError, match="ca-orders-api-dev"):
+        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=30, sleep=lambda _: None)
+
+
+def test_verify_fails_fast_on_terminal_state():
+    slept = []
+    run = _runner([
+        _Res(0, "rev1\n"),
+        _Res(0, '{"prov": "Failed", "running": "Stopped"}'),
+    ])
+    with pytest.raises(verify.VerifyError, match="ca-orders-api-dev"):
+        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
+    assert slept == []  # did not burn the poll budget
+
+
+def test_verify_missing_app_reports_incomplete_stack():
+    run = _runner([_Res(1, "", "ResourceNotFound")])
+    with pytest.raises(verify.VerifyError, match="incomplete"):
+        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300, sleep=lambda _: None)
+
+
+def test_verify_no_resources_is_noop():
+    tool = {"name": "site", "apps": {}, "functions": {}}
+    run = _runner([])
+    assert verify.verify(tool, "", "dev", "rg-x", run, sleep=lambda _: None) == 0
+    assert run.calls == []
