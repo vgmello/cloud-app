@@ -89,8 +89,12 @@ runs:
     - name: Read bootstrap identity
       id: bootstrap-id
       shell: bash
+      env:
+        # Passed as quoted "$VAR" below, never interpolated into the command, so
+        # a hostile caller value can't inject shell. cloudapp re-validates each.
+        TARGET_ENV: ${{ inputs.environment }}
       run: |
-        FILE="central-workspace/environments/${{ inputs.environment }}.yml"
+        FILE="central-workspace/environments/$TARGET_ENV.yml"
         {
           echo "client_id=$(yq '.bootstrap_identity_client_id' "$FILE")"
           echo "tenant_id=$(yq '.tenant_id' "$FILE")"
@@ -110,14 +114,19 @@ runs:
       shell: bash
       env:
         PYTHONPATH: central-workspace/engine
+        # Passed as quoted "$VAR" below, never interpolated into the command, so
+        # a hostile caller value can't inject shell. cloudapp re-validates each.
+        TARGET_ENV: ${{ inputs.environment }}
+        STACK_NAME: ${{ inputs.stack-name }}
+        CALLER_REPO: ${{ github.repository_owner }}/${{ inputs.caller-repo }}
       run: >-
         python3 -m cloudapp bootstrap-vars
-        --name "${{ inputs.stack-name }}"
-        --environment "${{ inputs.environment }}"
+        --name "$STACK_NAME"
+        --environment "$TARGET_ENV"
         --mode delegated
-        --app-repo "${{ github.repository_owner }}/${{ inputs.caller-repo }}"
+        --app-repo "$CALLER_REPO"
         --central-repo "${{ github.repository }}"
-        --platform-file "central-workspace/environments/${{ inputs.environment }}.yml"
+        --platform-file "central-workspace/environments/$TARGET_ENV.yml"
         > bootstrap-tfvars.json
 
     - name: Terraform bootstrap
@@ -125,15 +134,19 @@ runs:
       shell: bash
       env:
         PYTHONPATH: central-workspace/engine
+        # Passed as quoted "$VAR" below, never interpolated into the command, so
+        # a hostile caller value can't inject shell. cloudapp re-validates each.
+        TARGET_ENV: ${{ inputs.environment }}
+        STACK_NAME: ${{ inputs.stack-name }}
       run: >-
         python3 -m cloudapp terraform-deploy
         --stack bootstrap
         --terraform-dir central-workspace/terraform/azure/bootstrap
         --tfvars-file bootstrap-tfvars.json
-        --tool-json ".cloud-app/tool.${{ inputs.environment }}.json"
-        --tool-name "${{ inputs.stack-name }}"
-        --environment "${{ inputs.environment }}"
-        --platform-file "central-workspace/environments/${{ inputs.environment }}.yml"
+        --tool-json ".cloud-app/tool.$TARGET_ENV.json"
+        --tool-name "$STACK_NAME"
+        --environment "$TARGET_ENV"
+        --platform-file "central-workspace/environments/$TARGET_ENV.yml"
         ${{ inputs.plan-only == 'true' && '--plan-only' || '' }}
 
     # Capture the bootstrap results (RG + plan/apply identity client-ids) so the

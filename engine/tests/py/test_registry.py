@@ -55,6 +55,16 @@ def test_validate_names_rejects_empty_stack_file():
         registry.validate_names("dev", "orders-api", "acme/orders", "")
 
 
+def test_validate_names_rejects_trailing_newline_in_stack_file():
+    with pytest.raises(registry.RegistryError, match="stack file"):
+        registry.validate_names("dev", "orders-api", "acme/orders", "cloud-app.yml\n")
+
+
+def test_validate_names_rejects_trailing_newline_in_stack_name():
+    with pytest.raises(registry.RegistryError, match="stack name"):
+        registry.validate_names("dev", "orders-api\n", "acme/orders", "cloud-app.yml")
+
+
 # --- resolve_stack_path: path-traversal containment ---
 
 def test_resolve_stack_path_returns_path_inside_root(tmp_path):

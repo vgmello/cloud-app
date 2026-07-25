@@ -29,13 +29,13 @@ class RegistryError(Exception):
 def validate_names(env, stack_name, caller_repo, stack_file):
     """Reject any caller-controlled identifier that could escape a path or a
     git command before it is ever interpolated. Runs first — it is the gate."""
-    if not NAME_RE.match(env):
+    if not NAME_RE.fullmatch(env):
         raise RegistryError(f"invalid environment name '{env}'")
-    if not NAME_RE.match(stack_name):
+    if not NAME_RE.fullmatch(stack_name):
         raise RegistryError(f"invalid stack name '{stack_name}'")
-    if not REPO_RE.match(caller_repo):
+    if not REPO_RE.fullmatch(caller_repo):
         raise RegistryError(f"invalid caller repo '{caller_repo}'")
-    if not STACK_FILE_RE.match(stack_file or ""):
+    if not STACK_FILE_RE.fullmatch(stack_file or ""):
         raise RegistryError(f"invalid stack file '{stack_file}'")
     if stack_file.startswith("/") or ".." in stack_file.split("/"):
         raise RegistryError(f"invalid stack file '{stack_file}'")
