@@ -28,7 +28,9 @@ def state_key(name, env, stack="main"):
 
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
+_ENV_ALNUM = re.compile(r"[a-zA-Z0-9]*")
 MAX_CONTAINER = 63
+MIN_CONTAINER = 3
 
 
 def stack_container(sb, name, env, stack="main"):
@@ -39,14 +41,34 @@ def stack_container(sb, name, env, stack="main"):
     callers never hold it, and Terraform cannot init into a container the same
     run has not created yet. The main stack gets its own container so the
     plan/apply grants can be scoped to it instead of to every stack's state.
+
+    The main-stack container name is built by joining ``<name>-<env>``. That
+    join is only unambiguous -- guaranteeing two distinct (name, env) pairs
+    can never collide onto the same container and reunite their Terraform
+    state -- if env is purely alphanumeric. A hyphen (or any other separator)
+    in env would let, e.g., ("orders-api-east", "dev") and ("orders-api",
+    "east-dev") both produce "orders-api-east-dev". The manifest schema
+    already constrains environment keys to be hyphen-free, but that
+    constraint lives three layers away; it is re-asserted here so the
+    collision-freedom guarantee does not silently depend on it.
     """
     if stack == "bootstrap":
         return sb["container"]
+    if not _ENV_ALNUM.fullmatch(env):
+        raise BackendError(
+            f"environment '{env}' must be alphanumeric; a hyphen or other "
+            "separator would make the '<name>-<env>' state container name ambiguous"
+        )
     candidate = _NON_ALNUM.sub("-", f"{name}-{env}".lower()).strip("-")
     if len(candidate) > MAX_CONTAINER:
         raise BackendError(
             f"state container name '{candidate}' exceeds {MAX_CONTAINER} characters; "
             "shorten the stack name or the environment name"
+        )
+    if len(candidate) < MIN_CONTAINER:
+        raise BackendError(
+            f"state container name '{candidate}' is shorter than {MIN_CONTAINER} characters; "
+            "azure storage requires container names of at least 3 characters"
         )
     return candidate
 

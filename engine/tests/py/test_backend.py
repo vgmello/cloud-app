@@ -153,3 +153,27 @@ def test_state_exists_probes_the_per_stack_container():
     assert backend.state_exists(ENVDIR / "dev.yml", "orders-api", "dev", fake_run) is True
     assert "orders-api-dev" in calls[0]
     assert "tfstate" not in calls[0]
+
+
+def test_stack_container_rejects_env_with_hyphen():
+    # a hyphenated env would make the <name>-<env> join ambiguous:
+    # ("orders-api-east", "dev") and ("orders-api", "east-dev") would collide
+    sb = {"type": "azurerm", "container": "tfstate"}
+    with pytest.raises(backend.BackendError, match="environment"):
+        backend.stack_container(sb, "orders-api", "east-dev")
+
+
+def test_stack_container_no_collision_for_adversarial_pair():
+    sb = {"type": "azurerm", "container": "tfstate"}
+    a = backend.stack_container(sb, "orders-api-east", "dev")
+    # the colliding counterpart is rejected outright, so a collision is
+    # unreachable rather than merely unlikely
+    with pytest.raises(backend.BackendError):
+        backend.stack_container(sb, "orders-api", "east-dev")
+    assert a == "orders-api-east-dev"
+
+
+def test_stack_container_rejects_too_short_name():
+    sb = {"type": "azurerm", "container": "tfstate"}
+    with pytest.raises(backend.BackendError, match="container name"):
+        backend.stack_container(sb, "", "")
