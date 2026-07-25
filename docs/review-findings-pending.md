@@ -104,3 +104,27 @@ Add them behind a triage pass, ideally alongside #11 (network posture).
 - **#18 — no prod reliability baseline.** Single-zone Postgres, LRS storage, no
   backup/retention/diagnostics/alerts/budgets/locks. Needs production policy
   overlays validated in terraform tests.
+
+## Shipped with a known gap — revisit before the site is promoted
+
+### #19 — landing page states unvalidated trust claims as fact
+
+`site/src/sections/security.ts` and `site/src/sections/escape-hatch.ts` assert
+security properties this repo does not yet deliver. Shipped deliberately (the
+trust-model work is happening on another branch); recorded here so the copy is
+corrected rather than forgotten.
+
+| Page claim                                                                                           | Reality                                                                                                                                                                                     |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "the deploy identity for a stack can only touch that stack's resource group"                         | #3 is open — RG-scoped Contributor cannot write the role assignments, Key Vault secrets, and shared ACR/DNS/VNet joins the main stack needs, so a real apply fails partway.                 |
+| "each stack gets its own state container, so one repo can never read or write another's state"       | Wired but never live-validated — see `docs/trust-modes.md` and #12.                                                                                                                         |
+| "private endpoints and private DNS for data services … public ingress is an explicit opt-in per app" | True for database, storage, and Key Vault; #11 records that Function App storage and Static Web Apps have no equivalent protection. The page's phrasing does not scope this tightly enough. |
+| escape hatch: custom Terraform "confined to your resource group"                                     | Rests on the same apply identity #3 says is insufficient. The provider allowlist half of the claim is accurate (`ALLOWED_PROVIDERS` in `engine/cloudapp/customtf.py`).                      |
+
+Secondary: "OIDC federation, no stored credentials" is accurate for Azure but the
+pipeline does hold a long-lived GitHub App private key.
+
+**Fix direction:** once #3, #11, and #12 land, either the claims become true as
+written or the copy is reworded to design intent. The page currently carries no
+pre-release status line (a deliberate choice) — if the claims are corrected
+rather than delivered, restoring that line is the cheaper fix.
