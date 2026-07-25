@@ -196,7 +196,7 @@ Caller `.tf` files reference platform state as module variables:
 ### Rejected
 
 - File names starting with `_` — reserved for the platform's own files in the
-  `custom` module (`_context.tf`, the generated `_providers.g.tf`).
+  `custom` module (`_context.tf`, `_versions.tf`, the generated `_providers.g.tf`).
 - A `dir` that is absolute or contains `..` — rejected by the manifest schema,
   and re-checked against the resolved repo root before files are copied.
 - Any caller file with a top-level `provider "..."`, `terraform { ... }`, or

@@ -84,7 +84,7 @@ def cmd_prepare_custom_tf(args):
     copied = customtf.prepare(tool, args.app_root, args.custom_dir)
     if copied:
         gha.notice(f"staged caller terraform: {', '.join(copied)}")
-    gha.write_outputs({"custom_tf": "true" if copied else "false"})
+    gha.write_outputs({"custom_tf": "true" if customtf.declares_custom_tf(tool) else "false"})
 
 
 def cmd_enumerate_builds(args):

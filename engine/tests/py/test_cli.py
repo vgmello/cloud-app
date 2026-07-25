@@ -276,6 +276,61 @@ def test_prepare_custom_tf_stages_caller_files(tmp_path):
     assert "hashicorp/random" in (custom / "_providers.g.tf").read_text()
 
 
+def test_prepare_custom_tf_output_true_when_declared_dir_has_no_tf_files(tmp_path, monkeypatch):
+    """Regression: a caller who removes every .tf from a still-declared
+    terraform.dir must still get custom_tf=true — the removal itself is a
+    change that needs to apply, so the output must reflect the manifest
+    declaration, not what happened to get copied."""
+    app_root = tmp_path / "app"
+    (app_root / "terraform").mkdir(parents=True)
+
+    tool_json = tmp_path / "tool.dev.json"
+    tool_json.write_text(json.dumps({
+        "name": "orders",
+        "terraform": {"dir": "./terraform"},
+    }))
+
+    custom = tmp_path / "custom"
+    custom.mkdir()
+
+    gh = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(gh))
+
+    rc = cli.main([
+        "prepare-custom-tf",
+        "--tool-json", str(tool_json),
+        "--app-root", str(app_root),
+        "--custom-dir", str(custom),
+    ])
+
+    assert rc == 0
+    assert read_kv(gh.read_text())["custom_tf"] == "true"
+
+
+def test_prepare_custom_tf_output_false_without_terraform_field(tmp_path, monkeypatch):
+    app_root = tmp_path / "app"
+    app_root.mkdir(parents=True)
+
+    tool_json = tmp_path / "tool.dev.json"
+    tool_json.write_text(json.dumps({"name": "orders"}))
+
+    custom = tmp_path / "custom"
+    custom.mkdir()
+
+    gh = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(gh))
+
+    rc = cli.main([
+        "prepare-custom-tf",
+        "--tool-json", str(tool_json),
+        "--app-root", str(app_root),
+        "--custom-dir", str(custom),
+    ])
+
+    assert rc == 0
+    assert read_kv(gh.read_text())["custom_tf"] == "false"
+
+
 def test_prepare_custom_tf_reports_error_for_bad_provider(tmp_path):
     app_root = tmp_path / "app"
     (app_root / "terraform").mkdir(parents=True)

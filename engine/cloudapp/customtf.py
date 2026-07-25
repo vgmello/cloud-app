@@ -53,6 +53,13 @@ def _entry(tool):
     return (tool or {}).get("terraform")
 
 
+def declares_custom_tf(tool):
+    """True when the manifest declares a terraform: entry, regardless of
+    whether that dir currently holds any .tf files (e.g. the caller removed
+    them all — the removal still needs to be applied)."""
+    return _entry(tool) is not None
+
+
 def _blank_block_comments(text):
     """Replace /* ... */ spans with equivalent whitespace (newlines kept) so a
     comment-prefixed line like `/**/provider "x" {` can't hide a real block

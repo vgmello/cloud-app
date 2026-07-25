@@ -31,7 +31,14 @@ scratch_caller_dir="$scratch_root/tests/fixtures/custom"
 mkdir -p "$scratch_caller_dir"
 cp "$here/fixtures/custom/queue.tf.sample" "$scratch_caller_dir/queue.tf"
 
-cleanup() { rm -f "$staged_tf" "$generated_providers"; rm -rf "$scratch_root"; }
+# Name-agnostic cleanup: remove everything staged directly under custom/ except
+# the platform-owned files, so a future fixture that stages more than one .tf
+# can't leave a leftover behind for the CI job's later `tflint --recursive` step.
+cleanup() {
+  find "$custom_dir" -mindepth 1 -maxdepth 1 \
+    ! -name "_context.tf" ! -name "_versions.tf" -exec rm -rf {} +
+  rm -rf "$scratch_root"
+}
 trap cleanup EXIT
 
 PYTHONPATH="$repo_root/engine" python3 -m cloudapp prepare-custom-tf \
