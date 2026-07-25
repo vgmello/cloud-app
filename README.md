@@ -91,8 +91,10 @@ The trust & identity model — the split topology (control bootstraps, caller de
   directory of `*.tf` in your repo. They merge into a `custom` child module that
   receives platform context (resource group, subnets, Key Vault, per-app managed
   identity principal ids) and applies under the same RG-scoped identity — so custom
-  resources are confined to your resource group. Extra providers are declared in
-  the manifest from a fixed allowlist.
+  resources are confined to your resource group for Azure resource-plane providers
+  (`azurerm`, `azapi`). Extra providers are declared in the manifest from a fixed
+  allowlist; see [docs/usage.md](docs/usage.md#residual-risk) for the one
+  directory-scoped exception (`azuread`).
 
 ## Development
 

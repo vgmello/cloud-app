@@ -150,11 +150,14 @@ terraform:
 ```
 
 Both forms are overridable per environment under `environments.<env>`, same as
-everything else. The named directory's top-level `.tf`/`.tf.json` files (no
+everything else. The named directory's top-level `.tf` files (no
 subdirectories) are copied, unmodified, into a platform-owned `custom` child
 module and run as part of the main stack — so they apply under the same
 RG-scoped apply identity as the rest of your resources. That scope is the
-confinement: the identity only has Contributor on the tool's resource group.
+confinement for Azure resource-plane providers (`azurerm`, `azapi`): the
+identity only has Contributor on the tool's resource group. It is not a
+confinement for directory-scoped providers — see `azuread` under Residual
+risk below.
 
 ### Providers
 
@@ -193,16 +196,15 @@ Caller `.tf` files reference platform state as module variables:
 ### Rejected
 
 - File names starting with `_` — reserved for the platform's own files in the
-  `custom` module (`_context.tf`, `_versions.tf`, the generated
-  `_providers.g.tf`).
+  `custom` module (`_context.tf`, the generated `_providers.g.tf`).
 - A `dir` that is absolute or contains `..` — rejected by the manifest schema,
   and re-checked against the resolved repo root before files are copied.
 - Any caller file with a top-level `provider "..."`, `terraform { ... }`, or
   `backend "..." { ... }` block — providers come from `terraform.providers`
   above; backend and core `terraform {}` settings belong to the platform.
-- Anything that isn't a top-level `.tf`/`.tf.json` file in the named
-  directory — subdirectories aren't scanned, so files inside them are silently
-  not picked up.
+- Anything that isn't a top-level `.tf` file in the named directory —
+  subdirectories aren't scanned, so files inside them are silently not picked
+  up.
 
 ### Residual risk
 
@@ -212,6 +214,13 @@ commands on the CI runner (not just in Azure) under the same apply identity
 used for the rest of the stack. This is allowed, not sandboxed further — treat
 custom Terraform with the same trust as the rest of the repo's CI-executed
 code.
+
+`azuread` is on the provider allowlist but is **not** RG-scoped: it is a
+directory-scoped provider whose blast radius is the Entra tenant, not the
+tool's resource group. `azapi` stays fully RG-confined because it goes
+through ARM under the same RBAC as `azurerm`. This is a deliberate allowlist
+decision, not an oversight — treat `azuread` resources in caller `.tf` with
+tenant-wide trust, not resource-group trust.
 
 ### Example
 
@@ -232,6 +241,8 @@ resource "azurerm_storage_queue" "jobs" {
 resource "azurerm_role_assignment" "app_can_read" {
   scope                = azurerm_storage_account.custom.id
   role_definition_name = "Storage Queue Data Reader"
+  # "main" is the app key the single-app `app:` shorthand folds to; adjust to
+  # your app's key (e.g. the name under `apps:` if you use the map form).
   principal_id         = var.app_identity_principal_ids["main"]
 }
 ```
