@@ -9,6 +9,14 @@
 # This is what catches a "provider declared in the manifest -> terraform init
 # fails" regression (e.g. a duplicate required_providers block) that a fixture
 # copied in by hand, without going through the CLI, would never exercise.
+#
+# The sample caller file lives at fixtures/custom/queue.tf.sample, not
+# queue.tf: as a real .tf file it would be a standalone Terraform module that
+# `tflint --recursive` walks into and fails to parse (it references variables
+# like var.tool_name that only exist once copied next to the platform's
+# custom/_context.tf). To still drive the real CLI's collect() — which only
+# picks up *.tf files from the manifest's terraform.dir — stage the sample
+# into a scratch app-root as queue.tf before invoking it.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,12 +26,17 @@ custom_dir="$tf_dir/custom"
 staged_tf="$custom_dir/queue.tf"
 generated_providers="$custom_dir/_providers.g.tf"
 
-cleanup() { rm -f "$staged_tf" "$generated_providers"; }
+scratch_root="$(mktemp -d)"
+scratch_caller_dir="$scratch_root/tests/fixtures/custom"
+mkdir -p "$scratch_caller_dir"
+cp "$here/fixtures/custom/queue.tf.sample" "$scratch_caller_dir/queue.tf"
+
+cleanup() { rm -f "$staged_tf" "$generated_providers"; rm -rf "$scratch_root"; }
 trap cleanup EXIT
 
 PYTHONPATH="$repo_root/engine" python3 -m cloudapp prepare-custom-tf \
   --tool-json "$here/fixtures/tool.custom.json" \
-  --app-root "$tf_dir" \
+  --app-root "$scratch_root" \
   --custom-dir "$custom_dir"
 
 if [ ! -f "$staged_tf" ]; then

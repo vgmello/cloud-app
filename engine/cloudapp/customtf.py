@@ -41,7 +41,7 @@ _HEREDOC_MARKER = re.compile(r"<<-?([A-Za-z_][A-Za-z0-9_]*)")
 # Platform-owned files that survive a prepare() cleanup pass. _providers.g.tf
 # is generated but NOT listed here — it is always removed up front and
 # rewritten only when the manifest still declares providers.
-_PLATFORM_FILES = {"_context.tf"}
+_PLATFORM_FILES = {"_context.tf", "_versions.tf"}
 _GENERATED_PROVIDERS_FILE = "_providers.g.tf"
 
 
