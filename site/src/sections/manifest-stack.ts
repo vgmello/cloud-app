@@ -22,7 +22,7 @@ const RESOURCES: readonly Resource[] = [
   {
     id: "res-identity",
     title: "Managed identity",
-    detail: "per-app, RG-scoped, federated to your workflow",
+    detail: "per-app, scoped to Key Vault and the shared registry, not federated",
   },
   {
     id: "res-vault",
@@ -81,7 +81,7 @@ export const manifestStack: Section = {
           <h2
             class="text-[clamp(1.75rem,3.4vw,2.75rem)] font-semibold tracking-[-0.03em]"
           >
-            Twelve lines in. A whole stack out.
+            Six lines in. A whole stack out.
           </h2>
           <p class="prose-measure mt-4 text-base leading-relaxed">
             The manifest is the only thing you maintain. Everything on the right
