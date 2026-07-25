@@ -131,6 +131,122 @@ functions:
     package: ./cron # zipped as-is, no build
 ```
 
+## Caller-supplied Terraform
+
+For a resource the platform doesn't model, point `terraform:` at a directory of
+`.tf` files in your repo:
+
+```yaml
+terraform: ./terraform
+```
+
+or, to declare extra providers, the object form:
+
+```yaml
+terraform:
+  dir: ./terraform
+  providers:
+    - { name: random, source: hashicorp/random, version: "~> 3" }
+```
+
+Both forms are overridable per environment under `environments.<env>`, same as
+everything else. The named directory's top-level `.tf` files (no
+subdirectories) are copied, unmodified, into a platform-owned `custom` child
+module and run as part of the main stack — so they apply under the same
+RG-scoped apply identity as the rest of your resources. That scope is the
+confinement for Azure resource-plane providers (`azurerm`, `azapi`): the
+identity only has Contributor on the tool's resource group. It is not a
+confinement for directory-scoped providers — see `azuread` under Residual
+risk below.
+
+### Providers
+
+`azurerm` and `random` are already available (inherited from the root module).
+Anything else must be declared under `terraform.providers`, and the `name`
+must be one of a fixed allowlist; `source` must match exactly:
+
+| name       | source               |
+| ---------- | -------------------- |
+| `random`   | `hashicorp/random`   |
+| `null`     | `hashicorp/null`     |
+| `tls`      | `hashicorp/tls`      |
+| `time`     | `hashicorp/time`     |
+| `local`    | `hashicorp/local`    |
+| `external` | `hashicorp/external` |
+| `azuread`  | `hashicorp/azuread`  |
+| `azapi`    | `Azure/azapi`        |
+
+### Context variables
+
+Caller `.tf` files reference platform state as module variables:
+
+| variable                          | description                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------- |
+| `resource_group_name`             | the tool's resource group — the only RG the apply identity can write             |
+| `location`                        | deploy region                                                                    |
+| `environment`                     | manifest environment key (`dev`, `prod`, ...)                                    |
+| `tool_name`                       | manifest `name` with the platform naming prefix applied                          |
+| `vnet_id`                         | landing-zone VNet id                                                             |
+| `subnets`                         | landing-zone subnet ids — `private_endpoints` and `functions` (no `apps` subnet) |
+| `key_vault_id`                    | the tool's Key Vault id                                                          |
+| `key_vault_uri`                   | the tool's Key Vault URI                                                         |
+| `app_identity_principal_ids`      | map of app key -> managed identity principal id, for role assignments            |
+| `function_identity_principal_ids` | map of function key -> managed identity principal id, for role assignments       |
+
+### Rejected
+
+- File names starting with `_` — reserved for the platform's own files in the
+  `custom` module (`_context.tf`, `_versions.tf`, the generated `_providers.g.tf`).
+- A `dir` that is absolute or contains `..` — rejected by the manifest schema,
+  and re-checked against the resolved repo root before files are copied.
+- Any caller file with a top-level `provider "..."`, `terraform { ... }`, or
+  `backend "..." { ... }` block — providers come from `terraform.providers`
+  above; backend and core `terraform {}` settings belong to the platform.
+- Anything that isn't a top-level `.tf` file in the named directory —
+  subdirectories aren't scanned, so files inside them are silently not picked
+  up.
+
+### Residual risk
+
+Nothing stops a caller `.tf` file from using a `local-exec` provisioner,
+`data "external"`, or `data "terraform_remote_state"`. Those run arbitrary
+commands on the CI runner (not just in Azure) under the same apply identity
+used for the rest of the stack. This is allowed, not sandboxed further — treat
+custom Terraform with the same trust as the rest of the repo's CI-executed
+code.
+
+`azuread` is on the provider allowlist but is **not** RG-scoped: it is a
+directory-scoped provider whose blast radius is the Entra tenant, not the
+tool's resource group. `azapi` stays fully RG-confined because it goes
+through ARM under the same RBAC as `azurerm`. This is a deliberate allowlist
+decision, not an oversight — treat `azuread` resources in caller `.tf` with
+tenant-wide trust, not resource-group trust.
+
+### Example
+
+```yaml
+terraform:
+  dir: ./terraform
+  providers:
+    - { name: random, source: hashicorp/random, version: "~> 3" }
+```
+
+```hcl
+# terraform/queue.tf in the caller repo
+resource "azurerm_storage_queue" "jobs" {
+  name                 = "jobs"
+  storage_account_name = azurerm_storage_account.custom.name
+}
+
+resource "azurerm_role_assignment" "app_can_read" {
+  scope                = azurerm_storage_account.custom.id
+  role_definition_name = "Storage Queue Data Reader"
+  # "main" is the app key the single-app `app:` shorthand folds to; adjust to
+  # your app's key (e.g. the name under `apps:` if you use the map form).
+  principal_id         = var.app_identity_principal_ids["main"]
+}
+```
+
 ## Trust & identity
 
 See [trust-modes.md](trust-modes.md) for the three deploy identities, self vs delegated execution, state backends (Azure Blob / AWS S3), and the one-time bootstrap. Delegated-mode stack ownership is governed by the [registries/](../registries/README.md) lock files.

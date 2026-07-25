@@ -12,3 +12,11 @@ htmlcov/
 
 # sonar-scanner local run artifacts
 .scannerwork/
+
+# Caller-supplied terraform staged into the custom module at deploy time.
+# Only the platform's _-prefixed files belong in the repo. _versions.tf
+# declares only required_version (no required_providers, to avoid a
+# duplicate required_providers block once _providers.g.tf is generated).
+terraform/azure/custom/*
+!terraform/azure/custom/_context.tf
+!terraform/azure/custom/_versions.tf

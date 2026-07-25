@@ -35,3 +35,7 @@ output "native_stack" {
     powershell_core_version     = local.native_powershell_core_version
   }
 }
+
+output "identity_principal_id" {
+  value = azurerm_user_assigned_identity.this.principal_id
+}

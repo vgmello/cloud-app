@@ -27,6 +27,13 @@ def function_mode(fn):
     return "code" if "runtime" in fn else "container"
 
 
+def normalize_terraform(value):
+    """Fold the `terraform:` shorthand string into the {dir, providers} object."""
+    entry = {"dir": value} if isinstance(value, str) else dict(value)
+    entry.setdefault("providers", [])
+    return entry
+
+
 class ManifestError(Exception):
     pass
 
@@ -145,6 +152,8 @@ def normalize(merged):
         cfg["databases"] = entries
     if "storage" in cfg:
         cfg["storage"] = deep_merge(_load_yaml(DEFAULTS_DIR / "storage.yml"), cfg["storage"])
+    if "terraform" in cfg:
+        cfg["terraform"] = normalize_terraform(cfg["terraform"])
     validate_db_refs(cfg)
     return cfg
 

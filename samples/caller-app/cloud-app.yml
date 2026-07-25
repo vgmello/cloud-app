@@ -19,6 +19,16 @@ database:
   size: small
   public_access: false
 
+# Caller-supplied Terraform: *.tf under ./terraform merge into the platform's
+# `custom` child module (see terraform/queue.tf) and apply under the same
+# RG-scoped identity as the rest of this stack. `random` is declared here
+# because queue.tf uses it — see docs/usage.md#caller-supplied-terraform for
+# the full provider allowlist.
+terraform:
+  dir: ./terraform
+  providers:
+    - { name: random, source: hashicorp/random, version: "~> 3" }
+
 # Code (non-container) function example — commented out because it needs a
 # builder Dockerfile.build that this sample doesn't ship. `runtime:` switches a
 # functions: entry from container deploy to code deploy: `package:` zips a

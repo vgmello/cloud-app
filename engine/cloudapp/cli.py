@@ -12,6 +12,7 @@ import yaml
 from . import (
     backend,
     builds,
+    customtf,
     dockerbuild,
     funcdeploy,
     gha,
@@ -41,6 +42,14 @@ def _write_json(path, data):
 
 def cmd_parse_manifest(args):
     name, environments, tools, docker = manifest.parse(args.manifest, args.app_root)
+    # Validate caller-supplied terraform now (cheap, pure — no bootstrap has
+    # run yet) so a typo in `terraform:` fails fast instead of surfacing only
+    # after prepare-custom-tf, which runs after the RG/identities exist.
+    for tool in tools.values():
+        customtf.collect(tool, args.app_root)
+        entry = tool.get("terraform")
+        if entry:
+            customtf.render_providers(entry.get("providers", []))
     code_functions = any(
         manifest.function_mode(f) == "code"
         for tool in tools.values()
@@ -68,6 +77,14 @@ def cmd_resolve_config(args):
     tool = _load_json(args.tool_json)
     tfvars = resolve.resolve(tool, args.platform_file, args.environment)
     _write_json(args.out_file, tfvars)
+
+
+def cmd_prepare_custom_tf(args):
+    tool = _load_json(args.tool_json)
+    copied = customtf.prepare(tool, args.app_root, args.custom_dir)
+    if copied:
+        gha.notice(f"staged caller terraform: {', '.join(copied)}")
+    gha.write_outputs({"custom_tf": "true" if customtf.declares_custom_tf(tool) else "false"})
 
 
 def cmd_enumerate_builds(args):
@@ -229,6 +246,12 @@ def main(argv=None):
     p.add_argument("--out-file", required=True)
     p.set_defaults(func=cmd_resolve_config)
 
+    p = sub.add_parser("prepare-custom-tf")
+    p.add_argument("--tool-json", required=True)
+    p.add_argument("--app-root", default=".")
+    p.add_argument("--custom-dir", required=True)
+    p.set_defaults(func=cmd_prepare_custom_tf)
+
     p = sub.add_parser("enumerate-builds")
     p.add_argument("--tool-json", required=True)
     p.add_argument("--tool-name", required=True)
@@ -312,7 +335,7 @@ def main(argv=None):
         args.func(args)
     except (manifest.ManifestError, resolve.ResolveError, secrets.SyncError,
             tfdeploy.DeployError, backend.BackendError, rotate.RotateError,
-            registry.RegistryError, ValueError) as exc:
+            customtf.CustomTfError, registry.RegistryError, ValueError) as exc:
         gha.error(str(exc))
         return 1
     return 0

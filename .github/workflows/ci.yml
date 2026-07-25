@@ -71,6 +71,9 @@ jobs:
       - name: Terraform tests
         run: terraform -chdir=terraform/azure test
 
+      - name: Staged custom-module check
+        run: ./terraform/azure/tests/staged-custom-check.sh
+
       - name: Bootstrap stacks (fmt, validate, test)
         run: |
           for dir in terraform/azure/subscription-bootstrap terraform/azure/bootstrap; do

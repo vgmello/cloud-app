@@ -260,6 +260,21 @@ runs:
         --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
 
+    # Stage caller-supplied Terraform into the platform's custom child module.
+    # No-op when the manifest has no `terraform:` field. Runs before any
+    # terraform init so the staged files are part of the module from the start.
+    - name: Prepare custom terraform
+      id: prepare-custom-tf
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp prepare-custom-tf
+        --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
+        --app-root "."
+        --custom-dir "${{ github.action_path }}/../../../terraform/azure/custom"
+
     - name: Resolve config
       id: resolve
       shell: bash
@@ -323,10 +338,13 @@ runs:
 
     # Decide whether the Terraform run happens. It always runs unless this is a
     # routine apply whose manifest did not change. Forced on for: plan-only (it
-    # is a plan), always_run_terraform, manual dispatch, and first deploy (no
-    # Terraform state yet). STATE_EXISTS is the authoritative first-deploy
-    # signal; anything other than a definite "true" (first deploy, or an
-    # undetermined/failed probe) forces the full run.
+    # is a plan), always_run_terraform, manual dispatch, first deploy (no
+    # Terraform state yet), and caller-supplied terraform (CUSTOM_TF — there is
+    # no cheap way to diff caller .tf files the way MANIFEST_CHANGED diffs the
+    # manifest, so a change there would otherwise silently never apply).
+    # STATE_EXISTS is the authoritative first-deploy signal; anything other
+    # than a definite "true" (first deploy, or an undetermined/failed probe)
+    # forces the full run.
     - name: Decide apply
       id: gate
       shell: bash
@@ -335,6 +353,7 @@ runs:
         ALWAYS_RUN: ${{ inputs.always_run_terraform }}
         MANIFEST_CHANGED: ${{ steps.detect.outputs.manifest_changed }}
         STATE_EXISTS: ${{ steps.state.outputs.exists }}
+        CUSTOM_TF: ${{ steps.prepare-custom-tf.outputs.custom_tf }}
         EVENT: ${{ github.event_name }}
       run: |
         should_apply=true
@@ -346,6 +365,8 @@ runs:
           reason="manual dispatch"
         elif [ "$STATE_EXISTS" != "true" ]; then
           reason="first deploy (no Terraform state yet)"
+        elif [ "$CUSTOM_TF" = "true" ]; then
+          reason="manifest declares caller-supplied terraform — caller .tf changes cannot be diffed, so always apply"
         elif [ "$MANIFEST_CHANGED" = "true" ]; then
           reason="manifest changed"
         else
