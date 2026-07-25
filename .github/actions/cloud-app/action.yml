@@ -158,6 +158,11 @@ runs:
         private-key: ${{ inputs.app-private-key }}
         owner: ${{ github.repository_owner }}
         repositories: ${{ inputs.control-repo }}
+        # Least privilege: this token only dispatches the control repo's
+        # bootstrap workflow and polls the resulting run/artifact. Without an
+        # explicit permission it would carry the App's whole installation
+        # permission set into the caller's job, the least-trusted context here.
+        permission-actions: write
 
     - name: Bootstrap dispatch (Phase 1)
       id: bootstrap

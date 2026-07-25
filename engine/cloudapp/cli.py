@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -357,6 +358,13 @@ def main(argv=None):
             customtf.CustomTfError, verify.VerifyError,
             registry.RegistryError, ValueError) as exc:
         gha.error(str(exc))
+        return 1
+    except subprocess.CalledProcessError as exc:
+        # docker/az/terraform invocations that run with check=True raise this.
+        # Catching it here keeps every failure an actionable ::error:: annotation
+        # instead of a traceback, including from modules added later.
+        cmd = exc.cmd if isinstance(exc.cmd, str) else " ".join(str(c) for c in exc.cmd)
+        gha.error(f"command failed (exit {exc.returncode}): {cmd}")
         return 1
     return 0
 

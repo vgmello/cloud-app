@@ -394,3 +394,34 @@ def test_prepare_custom_tf_reports_error_for_bad_provider(tmp_path):
     ])
 
     assert rc == 1
+
+
+def test_subprocess_failure_surfaces_as_error_annotation(tmp_path, monkeypatch, capsys):
+    """A docker/az invocation that exits non-zero must produce an ::error::
+    annotation and rc=1, not a raw traceback."""
+    import json as _json
+    import subprocess
+
+    from cloudapp import cli, runner
+
+    tool = {"name": "orders-api", "apps": {"api": {"replicas": {"min": 1}}}, "functions": {}}
+    (tmp_path / "tool.dev.json").write_text(_json.dumps(tool))
+    (tmp_path / "dev.yml").write_text('naming_prefix: ""\nstate_backend:\n  type: azurerm\n')
+
+    def boom(cmd, check=False, capture=False, cwd=None):
+        raise subprocess.CalledProcessError(127, cmd)
+
+    monkeypatch.setattr(runner, "run", boom)
+
+    rc = cli.main([
+        "verify-deploy",
+        "--tool-json", str(tmp_path / "tool.dev.json"),
+        "--environment", "dev",
+        "--platform-file", str(tmp_path / "dev.yml"),
+        "--resource-group", "rg-x",
+    ])
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "::error::" in out
+    assert "exit 127" in out
