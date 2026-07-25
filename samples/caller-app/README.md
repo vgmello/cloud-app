@@ -35,6 +35,19 @@ fast, no plan/apply. A manifest change, first deploy, manual dispatch, or
 sites are not image-rotated, and a rotated secret with no new commit is picked
 up on the next revision (push a commit or restart the revision to force it).
 
+## When a deploy fails verification
+
+After deploying, the action checks that every container app and function app in
+the manifest exists and is healthy, and fails the run if not. Two common causes:
+
+- **A crash-looping image.** The deploy succeeded but the new revision is
+  unhealthy — check the container logs for that revision (the error names it).
+- **An incomplete stack.** An earlier deploy failed partway, so a resource was
+  never created. Re-run the workflow manually with `always_run_terraform: true`
+  to force a full Terraform run and finish the stack.
+
+Set `verify_deploy: false` on the action to skip the check.
+
 ## To use in your own app repo
 
 - Copy both files to your repo root / `.github/workflows/`.

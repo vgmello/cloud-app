@@ -271,3 +271,9 @@ See [trust-modes.md](trust-modes.md) for the three deploy identities, self vs de
 - One manifest (one platform call) per workflow run: the config artifact
   name is fixed, so invoking the `cloud-app` action twice in a single run is
   not supported.
+- Post-deploy verification: the action checks every container app and
+  function app exists and is healthy, and fails the run if not — a
+  crash-looping image or an incomplete stack (partial earlier deploy) are the
+  two common causes. Set `verify_deploy: false` to skip. Re-run with
+  `always_run_terraform: true` (or a manual dispatch) to force a full
+  Terraform run and finish an incomplete stack.
