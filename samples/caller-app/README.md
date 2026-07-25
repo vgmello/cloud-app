@@ -44,7 +44,11 @@ the manifest exists and is healthy, and fails the run if not. Two common causes:
   unhealthy — check the container logs for that revision (the error names it).
 - **An incomplete stack.** An earlier deploy failed partway, so a resource was
   never created. Re-run the workflow manually with `always_run_terraform: true`
-  to force a full Terraform run and finish the stack.
+  to force a full Terraform run and finish the stack. Note that a plain manual
+  `workflow_dispatch` run already forces a full Terraform run on its own — the
+  `always_run_terraform` input exists for callers who want to force that same
+  full run from other triggers, such as a normal push where the manifest
+  itself did not change.
 
 Set `verify_deploy: false` on the action to skip the check.
 

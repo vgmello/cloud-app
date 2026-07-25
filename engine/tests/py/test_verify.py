@@ -10,6 +10,21 @@ class _Res:
         self.stderr = stderr
 
 
+class _Clock:
+    """Fake clock: sleeping advances time, so deadline logic is deterministic."""
+
+    def __init__(self):
+        self.t = 0.0
+        self.slept = []
+
+    def now(self):
+        return self.t
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+        self.t += seconds
+
+
 TOOL = {
     "name": "orders-api",
     "apps": {
@@ -127,6 +142,17 @@ def test_check_resource_not_running_is_pending_when_required():
     assert state == verify.PENDING
 
 
+def test_check_resource_unknown_running_state_is_not_failed():
+    # runningState is extensible; a new healthy value must not fail the check
+    run = _runner([
+        _Res(0, "rev1\n"),
+        _Res(0, '{"prov": "Provisioned", "running": "RunningAtMaxScale"}'),
+    ])
+    res = {"kind": "containerapp", "name": "ca-orders-api-dev", "require_running": True}
+    state, _ = verify.check_resource(res, "rg-x", run)
+    assert state == verify.HEALTHY
+
+
 def test_check_resource_function_running_passes():
     run = _runner([_Res(0, "Running\n")])
     res = {"kind": "functionapp", "name": "func-orders-api-dev", "require_running": True}
@@ -142,6 +168,16 @@ def test_check_resource_function_stopped_is_pending():
     assert state == verify.PENDING
 
 
+def test_check_resource_function_empty_output_is_terminal():
+    # az functionapp show can exit 0 with empty output for a nonexistent site;
+    # an existing site always reports a state, so this must not poll to timeout.
+    run = _runner([_Res(0, "")])
+    res = {"kind": "functionapp", "name": "func-orders-api-dev", "require_running": True}
+    state, detail = verify.check_resource(res, "rg-x", run)
+    assert state == verify.FAILED
+    assert "not found" in detail.lower()
+
+
 ONE_APP = {"name": "orders-api", "apps": {"api": {"replicas": {"min": 1}}}, "functions": {}}
 
 
@@ -150,10 +186,11 @@ def test_verify_passes_when_healthy_immediately():
         _Res(0, "rev1\n"),
         _Res(0, '{"prov": "Provisioned", "running": "Running"}'),
     ])
-    slept = []
-    n = verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
+    clock = _Clock()
+    n = verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300,
+                       sleep=clock.sleep, now=clock.now)
     assert n == 1
-    assert slept == []
+    assert clock.slept == []
 
 
 def test_verify_retries_until_healthy():
@@ -163,10 +200,11 @@ def test_verify_retries_until_healthy():
         _Res(0, "rev1\n"),
         _Res(0, '{"prov": "Provisioned", "running": "Running"}'),
     ])
-    slept = []
-    n = verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
+    clock = _Clock()
+    n = verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300,
+                       sleep=clock.sleep, now=clock.now)
     assert n == 1
-    assert slept == [10]
+    assert clock.slept == [10]
 
 
 def test_verify_raises_when_budget_exhausted():
@@ -175,34 +213,43 @@ def test_verify_raises_when_budget_exhausted():
             return _Res(0, '{"prov": "Provisioned", "running": "Processing"}')
         return _Res(0, "rev1\n")
 
-    slept = []
+    clock = _Clock()
     with pytest.raises(verify.VerifyError, match="ca-orders-api-dev"):
-        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=30, sleep=slept.append)
-    # timeout=30, interval=10 -> 3 probe rounds, 2 sleeps (none after the final attempt)
-    assert slept == [10, 10]
+        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=30,
+                       sleep=clock.sleep, now=clock.now)
+    # timeout=30, interval=10 -> the deadline is polled after every round rather
+    # than a fixed attempt count, so the loop probes once more than the old
+    # attempt-count logic (4 rounds) but each sleep is capped to the remaining
+    # budget, so it still stops exactly at the 30s deadline: 3 sleeps of 10.
+    assert clock.slept == [10, 10, 10]
+    assert clock.t == 30
 
 
 def test_verify_fails_fast_on_terminal_state():
-    slept = []
+    clock = _Clock()
     run = _runner([
         _Res(0, "rev1\n"),
         _Res(0, '{"prov": "Failed", "running": "Stopped"}'),
     ])
     with pytest.raises(verify.VerifyError, match="ca-orders-api-dev"):
-        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
-    assert slept == []  # did not burn the poll budget
+        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300,
+                       sleep=clock.sleep, now=clock.now)
+    assert clock.slept == []  # did not burn the poll budget
 
 
 def test_verify_missing_app_reports_incomplete_stack():
     run = _runner([_Res(1, "", "ResourceNotFound")])
+    clock = _Clock()
     with pytest.raises(verify.VerifyError, match="incomplete"):
-        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300, sleep=lambda _: None)
+        verify.verify(ONE_APP, "", "dev", "rg-x", run, timeout=300,
+                       sleep=clock.sleep, now=clock.now)
 
 
 def test_verify_no_resources_is_noop():
     tool = {"name": "site", "apps": {}, "functions": {}}
     run = _runner([])
-    assert verify.verify(tool, "", "dev", "rg-x", run, sleep=lambda _: None) == 0
+    clock = _Clock()
+    assert verify.verify(tool, "", "dev", "rg-x", run, sleep=clock.sleep, now=clock.now) == 0
     assert run.calls == []
 
 
@@ -232,11 +279,12 @@ def test_verify_multi_resource_waits_for_all_and_skips_healthy():
             return _Res(0, '{"prov": "Provisioning", "running": "Processing"}')
         return _Res(0, '{"prov": "Provisioned", "running": "Running"}')
 
-    slept = []
-    n = verify.verify(tool, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
+    clock = _Clock()
+    n = verify.verify(tool, "", "dev", "rg-x", run, timeout=300,
+                       sleep=clock.sleep, now=clock.now)
 
     assert n == 2
-    assert slept == [10]
+    assert clock.slept == [10]
     fast_probes = sum(1 for c in calls if fast in c)
     slow_probes = sum(1 for c in calls if slow in c)
     assert fast_probes == 2, "healthy resource must not be re-probed"
@@ -257,7 +305,8 @@ def test_verify_fails_when_one_resource_is_terminal_though_another_is_healthy():
             return _Res(0, '{"prov": "Failed", "running": "Stopped"}')
         return _Res(0, '{"prov": "Provisioned", "running": "Running"}')
 
-    slept = []
+    clock = _Clock()
     with pytest.raises(verify.VerifyError, match="bad"):
-        verify.verify(tool, "", "dev", "rg-x", run, timeout=300, sleep=slept.append)
-    assert slept == []
+        verify.verify(tool, "", "dev", "rg-x", run, timeout=300,
+                       sleep=clock.sleep, now=clock.now)
+    assert clock.slept == []

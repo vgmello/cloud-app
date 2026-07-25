@@ -274,6 +274,12 @@ See [trust-modes.md](trust-modes.md) for the three deploy identities, self vs de
 - Post-deploy verification: the action checks every container app and
   function app exists and is healthy, and fails the run if not — a
   crash-looping image or an incomplete stack (partial earlier deploy) are the
-  two common causes. Set `verify_deploy: false` to skip. Re-run with
+  two common causes. Function apps are checked only for existence and a
+  `Running` state, not application health — there is no equivalent of the
+  container app's revision provisioning check. A stack containing only
+  static sites is not verified at all, since static sites have no revisions
+  to check. Set `verify_deploy: false` to skip the check entirely, or
+  `verify_timeout` (seconds to wait for every resource to become healthy,
+  default 300) to tune how long it polls before failing. Re-run with
   `always_run_terraform: true` (or a manual dispatch) to force a full
   Terraform run and finish an incomplete stack.

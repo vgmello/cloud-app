@@ -466,6 +466,7 @@ runs:
         --timeout "$VERIFY_TIMEOUT"
 
     - name: Write summary
+      if: always()
       shell: bash
       env:
         SHOULD_APPLY: ${{ steps.gate.outputs.should_apply }}
