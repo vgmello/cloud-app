@@ -1,0 +1,29 @@
+{
+  "name": "cloud-app-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "@types/bun": "latest",
+    "@types/culori": "^4",
+    "ajv": "^8",
+    "culori": "^4",
+    "jsdom": "^26",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vite": "^7",
+    "vitest": "^3",
+    "yaml": "^2"
+  }
+}
