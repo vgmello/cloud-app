@@ -54,6 +54,25 @@ export function initConnectors(root: ParentNode = document): void {
     // Under reduced motion `initReveal` never applies `will-reveal` (it
     // jumps straight to `is-revealed`), so there is no layout change and no
     // transition to wait for; the initial `draw()` is already correct.
-    container.addEventListener("transitionend", draw);
+    //
+    // A single reveal moves several descendants at once, and each one
+    // transitions both `opacity` and `transform` — so one scroll produces a
+    // burst of `transitionend` events on this container. Reacting to every
+    // one of them would call `draw()` (which calls `replaceChildren()` and
+    // re-adds `connector-draw`) repeatedly, restarting the line-draw
+    // animation from zero each time and making the lines stutter. Only the
+    // `transform` property actually moves anything `draw()` cares about, so
+    // ignore `opacity` events; and coalesce the remaining ones through
+    // `requestAnimationFrame` so a burst still produces exactly one redraw.
+    let redrawScheduled = false;
+    container.addEventListener("transitionend", (event) => {
+      if (event.propertyName !== "transform") return;
+      if (redrawScheduled) return;
+      redrawScheduled = true;
+      requestAnimationFrame(() => {
+        redrawScheduled = false;
+        draw();
+      });
+    });
   }
 }

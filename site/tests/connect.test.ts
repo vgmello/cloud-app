@@ -15,6 +15,16 @@ function rect(top: number, left = 0, width = 100, height = 20): DOMRect {
   } as DOMRect;
 }
 
+function transitionEnd(propertyName: string): Event {
+  const event = new Event("transitionend", { bubbles: true });
+  Object.defineProperty(event, "propertyName", { value: propertyName });
+  return event;
+}
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 function setup(): void {
   document.body.innerHTML = `
     <div data-connectors>
@@ -83,7 +93,7 @@ describe("initConnectors", () => {
     ).toHaveLength(2);
   });
 
-  it("redraws when a reveal transition finishes on the connector container", () => {
+  it("redraws when a reveal transition finishes on the connector container", async () => {
     // The reveal animation settles a manifest line or resource card into
     // its resting position via a CSS transition on that descendant; the
     // transitionend event bubbles up to the [data-connectors] container.
@@ -97,9 +107,74 @@ describe("initConnectors", () => {
     setup();
     initConnectors(document);
     const container = document.querySelector<HTMLElement>("[data-connectors]")!;
-    container.dispatchEvent(
-      new Event("transitionend", { bubbles: true }),
+    container.dispatchEvent(transitionEnd("transform"));
+    await nextAnimationFrame();
+    expect(
+      document.querySelectorAll("[data-connector-canvas] line"),
+    ).toHaveLength(2);
+  });
+
+  it("ignores transitionend events for properties other than transform", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn() }),
     );
+    setup();
+    initConnectors(document);
+    const canvas = document.querySelector<SVGSVGElement>(
+      "[data-connector-canvas]",
+    )!;
+    const replaceChildren = vi.spyOn(canvas, "replaceChildren");
+    replaceChildren.mockClear(); // drop the call made by the initial draw()
+
+    const container = document.querySelector<HTMLElement>("[data-connectors]")!;
+    container.dispatchEvent(transitionEnd("opacity"));
+    await nextAnimationFrame();
+
+    expect(replaceChildren).not.toHaveBeenCalled();
+  });
+
+  it("coalesces a burst of transitionend events into a single redraw", async () => {
+    // Scrolling the section into view fires opacity + transform
+    // transitionend for every one of the 5 reveal targets — 10 events from
+    // one scroll. Redrawing on each would call draw() (replaceChildren() +
+    // re-adding connector-draw) 10 times, restarting the 900ms line-draw
+    // animation from zero on every call and making the lines stutter.
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn() }),
+    );
+    setup();
+    initConnectors(document);
+    const canvas = document.querySelector<SVGSVGElement>(
+      "[data-connector-canvas]",
+    )!;
+    const replaceChildren = vi.spyOn(canvas, "replaceChildren");
+    replaceChildren.mockClear(); // drop the call made by the initial draw()
+
+    const container = document.querySelector<HTMLElement>("[data-connectors]")!;
+    const burst = [
+      "opacity",
+      "transform",
+      "opacity",
+      "transform",
+      "opacity",
+      "transform",
+      "opacity",
+      "transform",
+      "opacity",
+      "transform",
+    ];
+    for (const propertyName of burst) {
+      container.dispatchEvent(transitionEnd(propertyName));
+    }
+
+    // No synchronous redraw from the burst — it must be coalesced.
+    expect(replaceChildren).not.toHaveBeenCalled();
+
+    await nextAnimationFrame();
+
+    expect(replaceChildren).toHaveBeenCalledTimes(1);
     expect(
       document.querySelectorAll("[data-connector-canvas] line"),
     ).toHaveLength(2);
