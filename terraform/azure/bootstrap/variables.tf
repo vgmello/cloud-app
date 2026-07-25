@@ -36,8 +36,8 @@ variable "state_account_id" {
   default     = ""
 }
 
-variable "state_container" {
-  description = "tfstate blob container name. Grants scope to this container when set; to the whole account otherwise."
+variable "stack_state_container" {
+  description = "Per-(stack, environment) blob container holding this stack's main tfstate. Created here; the plan/apply state grants scope to it. Empty disables the container and its grants (e.g. s3 backend)."
   type        = string
   default     = ""
 }

@@ -5,14 +5,6 @@ provider "azurerm" {
 
 locals {
   rg = "rg-${var.name}-${var.environment}"
-
-  # Scope the state-container grants to the container when known, else the
-  # account. Empty string disables them (e.g. s3 backend).
-  state_scope = (
-    var.state_account_id == "" ? "" :
-    var.state_container == "" ? var.state_account_id :
-    "${var.state_account_id}/blobServices/default/containers/${var.state_container}"
-  )
 }
 
 resource "azurerm_resource_group" "this" {
@@ -58,18 +50,27 @@ resource "azurerm_role_assignment" "apply_contributor" {
   principal_id         = azurerm_user_assigned_identity.apply.principal_id
 }
 
-# tfstate data-plane access (state store lives outside the tool RG): plan reads
-# the main state, apply reads+writes it. Skipped when state_scope is empty.
+# This stack's own tfstate container, so the plan/apply grants below can be
+# scoped to it rather than to a container shared by every stack.
+resource "azurerm_storage_container" "state" {
+  count                 = var.state_account_id == "" || var.stack_state_container == "" ? 0 : 1
+  name                  = var.stack_state_container
+  storage_account_id    = var.state_account_id
+  container_access_type = "private"
+}
+
+# tfstate data-plane access, scoped to THIS stack's container only: plan reads
+# the main state, apply reads+writes it. Skipped when no state container.
 resource "azurerm_role_assignment" "plan_state" {
-  count                = local.state_scope == "" ? 0 : 1
-  scope                = local.state_scope
+  count                = length(azurerm_storage_container.state)
+  scope                = azurerm_storage_container.state[0].id
   role_definition_name = "Storage Blob Data Reader"
   principal_id         = azurerm_user_assigned_identity.plan.principal_id
 }
 
 resource "azurerm_role_assignment" "apply_state" {
-  count                = local.state_scope == "" ? 0 : 1
-  scope                = local.state_scope
+  count                = length(azurerm_storage_container.state)
+  scope                = azurerm_storage_container.state[0].id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.apply.principal_id
 }

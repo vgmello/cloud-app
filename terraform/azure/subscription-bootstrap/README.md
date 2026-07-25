@@ -1,5 +1,12 @@
 # Subscription bootstrap (run once per subscription + environment)
 
+> **Prerequisite for already-bootstrapped environments.** If this environment
+> was bootstrapped before the per-stack state container role
+> (`cloudapp-state-container-<env>`) was introduced, re-run
+> `subscription-bootstrap` to pick up that role **before** the next stack
+> bootstrap runs. Otherwise creating the per-stack state container fails with
+> an authorization error.
+
 A subscription **Owner** runs this stack one time per environment. It creates
 the `cloudapp-bootstrap` custom role, the shared `id-cloudapp-bootstrap-<env>`
 identity, its role assignment, a federated credential trusting the trusted

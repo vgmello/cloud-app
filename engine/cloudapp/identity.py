@@ -18,10 +18,10 @@ _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
 def _validate(app_repo, central_repo, env):
-    if not _ENV_RE.match(env):
+    if not _ENV_RE.fullmatch(env):
         raise ValueError(f"invalid environment name '{env}'")
     for repo in (app_repo, central_repo):
-        if not _REPO_RE.match(repo):
+        if not _REPO_RE.fullmatch(repo):
             raise ValueError(f"invalid repo '{repo}'")
 
 

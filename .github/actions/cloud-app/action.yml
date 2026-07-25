@@ -120,10 +120,12 @@ runs:
     - name: Parse manifest
       id: parse
       shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp parse-manifest
-        --manifest "${{ inputs.manifest }}"
+        --manifest "$MANIFEST"
         --output-dir .cloud-app
         --app-root "."
 
@@ -167,15 +169,22 @@ runs:
     - name: Bootstrap dispatch summary
       if: always()
       shell: bash
+      env:
+        CONTROL_REPO: ${{ inputs.control-repo }}
+        STACK_NAME: ${{ steps.parse.outputs.name }}
+        DEPLOY_ENV: ${{ inputs.env }}
+        CALLER_BRANCH: ${{ github.ref_name }}
       run: |
-        cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+        cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
         ### Bootstrap Dispatch Summary
-        - **Control Repository:** \`${{ inputs.control-repo }}\`
-        - **Stack Name:** \`${{ steps.parse.outputs.name }}\`
-        - **Environment:** \`${{ inputs.env }}\`
-        - **Caller Branch:** \`${{ github.ref_name }}\`
-        - **[View Control Bootstrap Run](${{ env.TARGET_RUN_URL }})**
         EOF
+        {
+          echo "- **Control Repository:** \`$CONTROL_REPO\`"
+          echo "- **Stack Name:** \`$STACK_NAME\`"
+          echo "- **Environment:** \`$DEPLOY_ENV\`"
+          echo "- **Caller Branch:** \`$CALLER_BRANCH\`"
+          echo "- **[View Control Bootstrap Run]($TARGET_RUN_URL)**"
+        } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Read platform config
       id: platform
@@ -216,11 +225,12 @@ runs:
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp docker-build
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --registry "${{ steps.platform.outputs.registry }}"
         --git-sha "${{ github.sha }}"
 
@@ -242,11 +252,12 @@ runs:
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp state-exists
         --platform-file "${{ steps.platform.outputs.file }}"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
 
     - name: Resolve config
@@ -283,13 +294,14 @@ runs:
         TF_IN_AUTOMATION: "true"
         IMAGE_TAGS: ${{ steps.build.outputs.image-tags || '{}' }}
         TARGETS: module.keyvault
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp terraform-deploy
         --terraform-dir "${{ github.action_path }}/../../../terraform/azure"
         --tfvars-file tfvars.json
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
         --image-tags "$IMAGE_TAGS"
@@ -370,13 +382,14 @@ runs:
         DEPLOY_ENV: ${{ inputs.env }}
         TF_IN_AUTOMATION: "true"
         IMAGE_TAGS: ${{ steps.build.outputs.image-tags || '{}' }}
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp terraform-deploy
         --terraform-dir "${{ github.action_path }}/../../../terraform/azure"
         --tfvars-file tfvars.json
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
         --image-tags "$IMAGE_TAGS"
@@ -393,12 +406,13 @@ runs:
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
+        STACK: ${{ steps.parse.outputs.name }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp deploy-functions
         --terraform-dir "${{ github.action_path }}/../../../terraform/azure"
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
-        --tool-name "${{ steps.parse.outputs.name }}"
+        --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
 

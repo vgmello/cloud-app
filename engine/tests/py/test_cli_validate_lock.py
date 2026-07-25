@@ -91,7 +91,9 @@ def test_stack_file_traversal_rejected(tmp_path, capsys):
     setup_workspace(tmp_path)
     rc = invoke(tmp_path, "dev", "../../../etc/passwd", "orders", "acme/orders")
     assert rc == 1
-    assert "escapes the caller workspace" in capsys.readouterr().out
+    # Now caught by validate_names' charset/traversal gate, before
+    # resolve_stack_path ever runs.
+    assert "invalid stack file" in capsys.readouterr().out
 
 
 def test_malformed_caller_repo_rejected(tmp_path, capsys):
