@@ -20,6 +20,7 @@ function file(id: string, filename: string, code: string): string {
           type="button"
           hidden
           data-copy-target="quickstart-${id}"
+          aria-label="Copy ${escapeHtml(filename)}"
           class="rounded-md border border-line px-2.5 py-1 font-mono text-xs text-muted transition-colors duration-150 hover:text-ink"
         >
           Copy
@@ -27,6 +28,9 @@ function file(id: string, filename: string, code: string): string {
       </div>
       <pre
         id="quickstart-${id}"
+        tabindex="0"
+        role="region"
+        aria-label="${escapeHtml(filename)}"
         class="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-relaxed text-ink/90"
       ><code>${escapeHtml(code)}</code></pre>
     </div>

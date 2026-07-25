@@ -28,12 +28,16 @@ export const environments: Section = {
             type="button"
             hidden
             data-copy-target="code-${MANIFEST.id}"
+            aria-label="Copy ${escapeHtml(MANIFEST.filename)}"
             class="absolute right-3 top-3 rounded-md border border-line bg-bg/80 px-2.5 py-1 font-mono text-xs text-muted transition-colors duration-150 hover:text-ink"
           >
             Copy
           </button>
           <pre
             id="code-${MANIFEST.id}"
+            tabindex="0"
+            role="region"
+            aria-label="${escapeHtml(MANIFEST.filename)}"
             class="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-relaxed text-ink/90"
           ><code>${escapeHtml(MANIFEST.code)}</code></pre>
         </div>

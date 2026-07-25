@@ -23,12 +23,16 @@ function codePanel(
         type="button"
         hidden
         data-copy-target="code-${id}"
+        aria-label="Copy ${escapeHtml(filename)}"
         class="absolute right-3 top-3 rounded-md border border-line bg-bg/80 px-2.5 py-1 font-mono text-xs text-muted transition-colors duration-150 hover:text-ink focus-visible:text-ink"
       >
         Copy
       </button>
       <pre
         id="code-${id}"
+        tabindex="0"
+        role="region"
+        aria-label="${escapeHtml(filename)}"
         class="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-relaxed text-ink/90"
       ><code>${escapeHtml(code)}</code></pre>
       <p class="sr-only">${escapeHtml(filename)}</p>
@@ -59,7 +63,7 @@ export const hero: Section = {
         </h1>
 
         <p class="prose-measure mt-6 text-lg leading-relaxed">
-          Describe your app in a twelve-line manifest. One Action step turns it
+          Describe your app in an eleven-line manifest. One Action step turns it
           into a full stack — Container Apps, Key Vault, Postgres, private
           networking — and keeps it there.
         </p>
