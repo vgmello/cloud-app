@@ -24,6 +24,7 @@ from . import (
     runner,
     secrets,
     tfdeploy,
+    verify,
 )
 from .yamlcompat import load_yaml
 
@@ -122,6 +123,16 @@ def cmd_rotate_images(args):
     prefix = platform.get("naming_prefix") or ""
     image_tags = json.loads(args.image_tags or "{}")
     rotate.rotate(tool, prefix, args.environment, image_tags, args.resource_group, runner.run)
+
+
+def cmd_verify_deploy(args):
+    tool = _load_json(args.tool_json)
+    platform = _load_platform(args.platform_file)
+    prefix = platform.get("naming_prefix") or ""
+    verify.verify(
+        tool, prefix, args.environment, args.resource_group, runner.run,
+        timeout=args.timeout,
+    )
 
 
 def cmd_terraform_deploy(args):
@@ -286,6 +297,14 @@ def main(argv=None):
     p.add_argument("--resource-group", required=True)
     p.set_defaults(func=cmd_rotate_images)
 
+    p = sub.add_parser("verify-deploy")
+    p.add_argument("--tool-json", required=True)
+    p.add_argument("--environment", required=True)
+    p.add_argument("--platform-file", required=True)
+    p.add_argument("--resource-group", required=True)
+    p.add_argument("--timeout", type=int, default=300)
+    p.set_defaults(func=cmd_verify_deploy)
+
     p = sub.add_parser("terraform-deploy")
     p.add_argument("--terraform-dir", required=True)
     p.add_argument("--tfvars-file", required=True)
@@ -335,7 +354,8 @@ def main(argv=None):
         args.func(args)
     except (manifest.ManifestError, resolve.ResolveError, secrets.SyncError,
             tfdeploy.DeployError, backend.BackendError, rotate.RotateError,
-            customtf.CustomTfError, registry.RegistryError, ValueError) as exc:
+            customtf.CustomTfError, verify.VerifyError,
+            registry.RegistryError, ValueError) as exc:
         gha.error(str(exc))
         return 1
     return 0
