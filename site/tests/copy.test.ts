@@ -69,4 +69,31 @@ describe("initCopy", () => {
     document.querySelector<HTMLButtonElement>("[data-copy-target]")?.click();
     expect(writeText).not.toHaveBeenCalled();
   });
+
+  it("extends the reset timeout when clicked twice in quick succession", async () => {
+    const { button, status } = setup();
+    initCopy(document, { writeText: vi.fn().mockResolvedValue(undefined) });
+    button.click();
+    await vi.waitFor(() => expect(status.textContent).toBe("Copied"));
+    expect(button.textContent?.trim()).toBe("Copied");
+
+    // Advance time partway (less than 2000ms)
+    vi.advanceTimersByTime(1000);
+    expect(button.textContent?.trim()).toBe("Copied");
+    expect(status.textContent).toBe("Copied");
+
+    // Click again before the first timer fires
+    button.click();
+    await vi.waitFor(() => expect(status.textContent).toBe("Copied"));
+
+    // Advance to where the first click's timer would have fired
+    vi.advanceTimersByTime(1000); // Now at 2000ms total, but timer was reset
+    expect(button.textContent?.trim()).toBe("Copied");
+    expect(status.textContent).toBe("Copied");
+
+    // Advance 1000ms more (total 3000ms, 2000ms after second click)
+    vi.advanceTimersByTime(1000);
+    expect(button.textContent?.trim()).toBe("Copy");
+    expect(status.textContent).toBe("");
+  });
 });
