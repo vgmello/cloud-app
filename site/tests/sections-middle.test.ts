@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { howItWorks } from "../src/sections/how-it-works";
 import { capabilities } from "../src/sections/capabilities";
 import { environments } from "../src/sections/environments";
+import { SECTIONS } from "../src/sections";
 import { sample } from "../src/content";
 
 function render(markup: string): HTMLElement {
@@ -17,7 +18,11 @@ describe("how it works", () => {
   });
 
   it("is the only section allowed to number itself", () => {
-    expect(render(howItWorks.render()).querySelector("ol")).not.toBeNull();
+    for (const section of SECTIONS) {
+      const hasOrderedList =
+        render(section.render()).querySelector("ol") !== null;
+      expect(hasOrderedList).toBe(section.id === "how-it-works");
+    }
   });
 
   it("names the plan-on-PR, apply-on-main split", () => {

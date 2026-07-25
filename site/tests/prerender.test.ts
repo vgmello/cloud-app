@@ -43,4 +43,19 @@ describe("renderDocument", () => {
     const doc = documentFrom(renderDocument(template));
     expect(doc.querySelectorAll(".will-reveal")).toHaveLength(0);
   });
+
+  it("gives every element a unique id", () => {
+    // copy.ts resolves a button's target with `querySelector('#' + id)`,
+    // which silently matches whichever element with that id comes first in
+    // document order. quickstart.ts deliberately prefixes its ids
+    // (`quickstart-<sample id>`) to avoid colliding with hero's copies of
+    // the same two samples; nothing else pins that invariant. Without this
+    // check, normalising away that prefix would make quickstart's copy
+    // buttons silently copy hero's code blocks instead of their own, with
+    // every other test still green.
+    const doc = documentFrom(renderDocument(template));
+    const ids = [...doc.querySelectorAll("[id]")].map((element) => element.id);
+    const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+    expect(duplicates).toEqual([]);
+  });
 });
