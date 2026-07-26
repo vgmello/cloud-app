@@ -13,7 +13,10 @@ import urllib.error
 import urllib.request
 from urllib.parse import quote
 
-API = "https://api.github.com"
+# GitHub Actions sets GITHUB_API_URL on every runner (to https://api.github.com
+# on github.com, to the instance API on GHES), so reading it is the idiomatic
+# form and also lets the e2e suite point this at a local server.
+API = os.environ.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
 
 
 def encode_path(path):
