@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { terraform } from "../src/sections/terraform";
+import { terraform, ALLOWED_PROVIDERS } from "../src/sections/terraform";
 import { SECTIONS } from "../src/sections";
 import { DOCS } from "../src/content";
 
@@ -7,6 +9,29 @@ function render(): HTMLElement {
   const host = document.createElement("div");
   host.innerHTML = terraform.render();
   return host;
+}
+
+// Source of truth for the allowlist is engine/cloudapp/customtf.py. Parsed
+// (rather than hardcoded here a third time) so a change to the engine's
+// ALLOWED_PROVIDERS dict makes this test fail instead of the page silently
+// going stale — see also src/sections/terraform.ts's ALLOWED_PROVIDERS.
+function enginesAllowedProviders(): string[] {
+  const source = readFileSync(
+    resolve(process.cwd(), "../engine/cloudapp/customtf.py"),
+    "utf8",
+  );
+  const dictMatch = source.match(/ALLOWED_PROVIDERS\s*=\s*\{([\s\S]*?)\n\}/);
+  const dictBody = dictMatch?.[1];
+  if (!dictBody) {
+    throw new Error("could not find ALLOWED_PROVIDERS dict in customtf.py");
+  }
+  const keys = [...dictBody.matchAll(/^\s*"([a-z0-9_]+)"\s*:/gm)]
+    .map((match) => match[1])
+    .filter((key): key is string => key !== undefined);
+  if (keys.length === 0) {
+    throw new Error("ALLOWED_PROVIDERS dict in customtf.py appears empty");
+  }
+  return keys;
 }
 
 describe("terraform section", () => {
@@ -32,18 +57,15 @@ describe("terraform section", () => {
     );
   });
 
-  it("states the full provider allowlist by name", () => {
+  it("states the full provider allowlist by name, and no other provider names", () => {
+    const engineProviders = enginesAllowedProviders();
+
+    // The page's own list must exactly match the engine's — every name
+    // present, no extras.
+    expect(new Set(ALLOWED_PROVIDERS)).toEqual(new Set(engineProviders));
+
     const text = render().textContent ?? "";
-    for (const provider of [
-      "random",
-      "null",
-      "tls",
-      "time",
-      "local",
-      "external",
-      "azuread",
-      "azapi",
-    ]) {
+    for (const provider of engineProviders) {
       expect(text).toContain(provider);
     }
   });
@@ -53,16 +75,15 @@ describe("terraform section", () => {
     expect(text).not.toMatch(/any (terraform )?provider/i);
   });
 
-  it("states that state storage in S3 does not mean AWS deployment", () => {
+  it("does not advertise an S3 state backend", () => {
     const text = render().textContent ?? "";
-    expect(text).toMatch(/s3/i);
-    expect(text).toMatch(/still azure|resources.*azure|azure.*resources/i);
+    expect(text).not.toMatch(/s3/i);
   });
 
-  it("states the roadmap line: provider-neutral manifest, Azure-only modules today", () => {
+  it("states the roadmap line: Azure today, portable core, modules Azure-only", () => {
     const text = render().textContent ?? "";
     expect(text).toMatch(/azure today/i);
-    expect(text).toMatch(/provider-neutral/i);
+    expect(text).toMatch(/platform modules underneath are azure-only/i);
   });
 
   it("links the trust-modes documentation", () => {

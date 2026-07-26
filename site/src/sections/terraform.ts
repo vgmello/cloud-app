@@ -2,7 +2,10 @@ import { html, escapeHtml } from "../lib/html";
 import { DOCS } from "../content";
 import type { Section } from "./index";
 
-const ALLOWED_PROVIDERS = [
+// Mirrors engine/cloudapp/customtf.py's ALLOWED_PROVIDERS keys. Kept in sync
+// by tests/terraform.test.ts, which parses that file and compares this list
+// against it, so a drift in either place fails the test.
+export const ALLOWED_PROVIDERS = [
   "random",
   "null",
   "tls",
@@ -27,12 +30,12 @@ const PROPERTIES: readonly Property[] = [
   {
     lead: "Standard state.",
     detail:
-      "An azurerm or s3 backend you own, holding ordinary Terraform state. The S3 option stores state only; the resources it describes are still Azure.",
+      "An azurerm backend you own, holding ordinary Terraform state in a container you control.",
   },
   {
     lead: "Real plans.",
     detail:
-      "Every change arrives as a Terraform plan on the pull request, in the format you already know how to read, before anything is applied.",
+      "Every change runs a Terraform plan on the pull request, in the format you already know how to read, there to read in the run summary before anything is applied.",
   },
 ];
 
@@ -87,8 +90,10 @@ export const terraform: Section = {
         </p>
 
         <p data-reveal class="prose-measure mt-6 text-sm text-muted">
-          Azure today. The manifest is provider-neutral by design; the platform
-          modules underneath are not yet — other clouds are next.
+          Azure today. The manifest's core shape is portable; a few fields —
+          ingress options, function runtimes — still mirror Azure directly.
+          The platform modules underneath are Azure-only. Other clouds are
+          next.
         </p>
 
         <p data-reveal class="mt-8 text-sm">
