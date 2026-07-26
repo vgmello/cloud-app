@@ -68,6 +68,9 @@ jobs:
           python3 engine/generate_tf_fixtures.py
           git diff --exit-code terraform/azure/tests/fixtures
 
+      # Must run before anything that runs terraform inside terraform/azure/bootstrap
+      # (e.g. "Bootstrap stacks" below) — a plan there would leave artefacts that
+      # change what this drift check sees.
       - name: Bootstrap fingerprint drift
         run: |
           PYTHONPATH=engine python3 -m cloudapp bootstrap-fingerprint --root . > bootstrap.fingerprint

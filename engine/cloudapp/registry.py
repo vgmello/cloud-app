@@ -95,7 +95,7 @@ def persist_lock(runner, cwd, env, stack_name, caller_repo):
         git("add", f"registries/{env}/{stack_name}.yml")
         git("commit", "-m", f"lock(registry): auto-register {stack_name} to {caller_repo} [{env}]")
         git("pull", "--rebase", "origin", "main")
-        git("push", "origin", "main")
+        git("push", "origin", "HEAD:main")
     except subprocess.CalledProcessError as exc:
         raise RegistryError(
             f"Failed to persist stack lock for '{stack_name}' ({exc}); "

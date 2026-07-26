@@ -150,6 +150,16 @@ def test_persist_lock_runs_git_sequence_in_order():
     assert fake.commands("git", "add") == [["git", "add", "registries/dev/orders.yml"]]
 
 
+def test_persist_lock_pushes_head_to_main_not_a_detached_ref():
+    # control-ref defaults to the action's own ref, so the control-side checkout
+    # can be a tag -- a detached HEAD with no local 'main' branch. 'git push
+    # origin main' would fail with "src refspec main does not match any"; push
+    # HEAD explicitly to the remote main instead.
+    fake = FakeRunner()
+    registry.persist_lock(fake, "central-workspace", "dev", "orders", "acme/orders")
+    assert fake.commands("git", "push") == [["git", "push", "origin", "HEAD:main"]]
+
+
 def test_persist_lock_fail_closed_when_push_rejected():
     fake = FakeRunner(results=[(["git", "push"], FakeResult(returncode=1, stderr="rejected"))])
     with pytest.raises(registry.RegistryError, match="not silently lost|persist"):

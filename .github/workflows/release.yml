@@ -26,6 +26,11 @@ jobs:
           # for was never fetched.
           fetch-tags: true
 
+      - name: Verify bootstrap fingerprint is current
+        run: |
+          PYTHONPATH=engine python3 -m cloudapp bootstrap-fingerprint --root . > /tmp/fp
+          diff /tmp/fp bootstrap.fingerprint
+
       - name: Move floating tags
         env:
           VERSION: ${{ inputs.version }}
