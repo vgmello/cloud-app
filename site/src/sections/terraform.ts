@@ -13,6 +13,29 @@ const ALLOWED_PROVIDERS = [
   "azapi",
 ] as const;
 
+interface Property {
+  readonly lead: string;
+  readonly detail: string;
+}
+
+const PROPERTIES: readonly Property[] = [
+  {
+    lead: "Ordinary modules.",
+    detail:
+      "The engine compiles the manifest to a normalized JSON document and a tfvars.json, then feeds them into checked-in Terraform under terraform/azure/. Nothing is generated behind your back — you can read every module it applies.",
+  },
+  {
+    lead: "Standard state.",
+    detail:
+      "An azurerm or s3 backend you own, holding ordinary Terraform state. The S3 option stores state only; the resources it describes are still Azure.",
+  },
+  {
+    lead: "Real plans.",
+    detail:
+      "Every change arrives as a Terraform plan on the pull request, in the format you already know how to read, before anything is applied.",
+  },
+];
+
 export const terraform: Section = {
   id: "terraform",
   render: () => html`
@@ -24,61 +47,55 @@ export const terraform: Section = {
           It is plain Terraform underneath.
         </h2>
 
-        <div data-reveal class="prose-measure mt-6 space-y-5 text-base leading-relaxed">
-          <p>
-            The manifest is not a proprietary format you are locked into — it
-            is data. The engine turns
-            <span class="font-mono text-ink">cloud-app.yml</span> into a
-            normalized JSON manifest and a
-            <span class="font-mono text-ink">tfvars.json</span>, and feeds
-            them into ordinary, checked-in Terraform modules under
-            <span class="font-mono text-ink">terraform/azure/</span>. You can
-            read every one of them.
-          </p>
-          <p>
-            State is standard Terraform state, in your own backend —
-            <span class="font-mono text-ink">azurerm</span> or
-            <span class="font-mono text-ink">s3</span>. The S3 option stores
-            state only; the resources it describes are still Azure. Every
-            change is a real Terraform plan, posted and reviewed on the pull
-            request before anything applies.
-          </p>
-          <p>
-            There is no proprietary runtime, no agent, and no control plane
-            holding your infrastructure hostage. If you stop using this
-            tomorrow, the Terraform and the state are still yours to run
-            directly.
-          </p>
-          <p>
-            The escape hatch works the same way: point
-            <span class="font-mono text-ink">terraform:</span> at your own
-            <span class="font-mono text-ink">*.tf</span> files and they merge
-            into a child module with platform context already wired in.
-            Providers in that module come from a fixed allowlist — today
-            ${ALLOWED_PROVIDERS.map(
-              (name, index) => html`<span class="font-mono text-ink"
+        <p class="prose-measure mt-4 text-base leading-relaxed">
+          The manifest is data, not a format that owns you. What it produces is
+          the thing you would have written by hand.
+        </p>
+
+        <ul data-reveal class="mt-10 max-w-3xl space-y-5 border-t border-line pt-6">
+          ${PROPERTIES.map(
+            (property) => html`
+              <li class="text-sm leading-relaxed">
+                <span class="font-semibold text-ink"
+                  >${escapeHtml(property.lead)}</span
+                >
+                ${escapeHtml(property.detail)}
+              </li>
+            `,
+          )}
+        </ul>
+
+        <p data-reveal class="prose-measure mt-10 text-lg leading-relaxed text-ink">
+          No proprietary runtime, no agent, no control plane holding your
+          infrastructure hostage. Walk away tomorrow and the Terraform and the
+          state are still yours to run directly.
+        </p>
+
+        <p data-reveal class="prose-measure mt-6 text-sm leading-relaxed">
+          Your own <span class="font-mono text-ink">*.tf</span> files run under
+          the same rules. Providers in that module come from a fixed
+          allowlist — today
+          ${ALLOWED_PROVIDERS.map(
+            (name, index) => html`<span class="font-mono text-ink"
                 >${escapeHtml(name)}</span
               >${index === ALLOWED_PROVIDERS.length - 1 ? "" : ", "}`,
-            )}
-            — a fixed set, not an open door. Letting caller code declare
-            arbitrary providers, backends, or provider blocks would open a way
-            around the ambient identity the whole platform authenticates
-            through; every provider on the list is either credential-less or
-            authenticates through that same ambient identity. You get the
-            guardrails without giving up Terraform.
-          </p>
-          <p class="text-sm text-muted">
-            Azure today. The manifest is provider-neutral by design; the
-            platform modules underneath are not yet — other clouds are next.
-          </p>
-          <p class="text-sm">
-            <a
-              href="${DOCS.trust}"
-              class="text-accent underline underline-offset-4"
-              >Read the trust and identity model</a
-            >
-          </p>
-        </div>
+          )}
+          — because letting caller code declare arbitrary providers or backends
+          would route around the identity the whole platform authenticates
+          through. Every provider on that list is either credential-less or
+          authenticates as that same identity.
+        </p>
+
+        <p data-reveal class="prose-measure mt-6 text-sm text-muted">
+          Azure today. The manifest is provider-neutral by design; the platform
+          modules underneath are not yet — other clouds are next.
+        </p>
+
+        <p data-reveal class="mt-8 text-sm">
+          <a href="${DOCS.trust}" class="text-accent underline underline-offset-4"
+            >Read the trust and identity model</a
+          >
+        </p>
       </div>
     </section>
   `,
