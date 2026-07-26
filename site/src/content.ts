@@ -119,32 +119,25 @@ app:
 terraform: ./terraform
 `,
   },
-  {
-    id: "capabilities-manifest",
-    filename: "cloud-app.yml",
-    label: "Everything at once",
-    kind: "manifest",
-    code: `name: orders-api
-apps:
-  api:
-    port: 8080
-functions:
-  worker:
-    runtime: dotnet-isolated:8.0
-    package: ./publish
-static_sites:
-  web: {}
-database:
-  type: postgres
-  size: small
-storage:
-  containers: [uploads]
-`,
-  },
 ];
 
 export function sample(id: string): CodeSample {
   const found = SAMPLES.find((entry) => entry.id === id);
   if (!found) throw new Error(`unknown code sample: ${id}`);
   return found;
+}
+
+/**
+ * An accessible name for a code sample's copy button / scrollable region.
+ * Several samples share the filename "cloud-app.yml" while holding
+ * different manifests, so the filename alone can't tell a screen-reader
+ * user which one they are on. `label` already names the sample's role on
+ * the page, so fold it in — unless it duplicates the filename (the
+ * "resources" sample uses its label as a stand-in filename, since it isn't
+ * a real file).
+ */
+export function sampleAriaLabel(entry: CodeSample): string {
+  return entry.label === entry.filename
+    ? entry.filename
+    : `${entry.label}: ${entry.filename}`;
 }

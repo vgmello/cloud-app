@@ -1,10 +1,13 @@
 import { html, escapeHtml } from "../lib/html";
-import { DOCS, sample } from "../content";
+import { DOCS, sample, sampleAriaLabel } from "../content";
+import type { CodeSample } from "../content";
 import type { Section } from "./index";
 
 const FILES = [sample("hero-manifest"), sample("hero-workflow")];
 
-function file(id: string, filename: string, code: string): string {
+function file(entry: CodeSample): string {
+  const { id, filename, code } = entry;
+  const ariaLabel = sampleAriaLabel(entry);
   return html`
     <div
       data-reveal
@@ -20,7 +23,7 @@ function file(id: string, filename: string, code: string): string {
           type="button"
           hidden
           data-copy-target="quickstart-${id}"
-          aria-label="Copy ${escapeHtml(filename)}"
+          aria-label="Copy ${escapeHtml(ariaLabel)}"
           class="rounded-md border border-line px-2.5 py-1 font-mono text-xs text-muted transition-colors duration-150 hover:text-ink"
         >
           Copy
@@ -30,7 +33,7 @@ function file(id: string, filename: string, code: string): string {
         id="quickstart-${id}"
         tabindex="0"
         role="region"
-        aria-label="${escapeHtml(filename)}"
+        aria-label="${escapeHtml(ariaLabel)}"
         class="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-relaxed text-ink/90"
       ><code>${escapeHtml(code)}</code></pre>
     </div>
@@ -40,9 +43,10 @@ function file(id: string, filename: string, code: string): string {
 export const quickstart: Section = {
   id: "quickstart",
   render: () => html`
-    <section id="quickstart">
+    <section id="quickstart" aria-labelledby="quickstart-heading">
       <div class="mx-auto w-full max-w-5xl px-6 py-20 md:py-28">
         <h2
+          id="quickstart-heading"
           class="text-[clamp(1.75rem,3.4vw,2.75rem)] font-semibold tracking-[-0.03em]"
         >
           Two files. That is the whole onboarding.
@@ -54,7 +58,7 @@ export const quickstart: Section = {
         </p>
 
         <div class="mt-10 grid gap-6 lg:grid-cols-2">
-          ${FILES.map((entry) => file(entry.id, entry.filename, entry.code))}
+          ${FILES.map((entry) => file(entry))}
         </div>
 
         <p data-reveal class="mt-10">

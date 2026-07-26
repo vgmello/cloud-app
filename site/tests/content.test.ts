@@ -45,6 +45,16 @@ describe("code samples", () => {
     expect(() => sample("does-not-exist")).toThrow(/does-not-exist/);
   });
 
+  it("does not ship samples unreferenced by any section", () => {
+    // "capabilities-manifest" was authored for the capabilities section but
+    // that section never ended up rendering a manifest sample — nothing in
+    // src/ or tests/ reads this id. An orphaned sample still gets schema-
+    // validated and shipped in the bundle for no reader-visible reason.
+    expect(() => sample("capabilities-manifest")).toThrow(
+      /capabilities-manifest/,
+    );
+  });
+
   it("ships the resources sample without schema-validating it as a manifest", () => {
     const resources = sample("hero-resources");
     expect(resources.kind).toBe("resources");

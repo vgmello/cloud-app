@@ -46,6 +46,10 @@ function setup(): void {
 
 describe("initConnectors", () => {
   afterEach(() => {
+    // A couple of tests below call `vi.useFakeTimers()`; restoring here
+    // (rather than only at the end of each of those tests) means a failed
+    // assertion mid-test can't leak fake timers into sibling tests.
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     document.body.innerHTML = "";
   });
@@ -91,6 +95,45 @@ describe("initConnectors", () => {
     expect(
       document.querySelectorAll("[data-connector-canvas] line"),
     ).toHaveLength(2);
+  });
+
+  it("debounces a burst of resize events into a single redraw, reusing the transitionend debounce", () => {
+    // The window can fire many `resize` events per second while the user
+    // drags. Redrawing on every one of them (as a plain, undebounced
+    // listener does) would call `draw()` — and its `replaceChildren()` /
+    // `connector-draw` restart — far more often than the display can show.
+    // Resize should share the same 150ms trailing debounce that
+    // `transitionend` already uses, not invent a second timer.
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn() }),
+    );
+    setup();
+    initConnectors(document);
+    const canvas = document.querySelector<SVGSVGElement>(
+      "[data-connector-canvas]",
+    )!;
+    const replaceChildren = vi.spyOn(canvas, "replaceChildren");
+    replaceChildren.mockClear(); // drop the call made by the initial draw()
+
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersByTime(60);
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersByTime(60);
+    window.dispatchEvent(new Event("resize"));
+
+    // Still within the quiet window after the last event — no redraw yet.
+    expect(replaceChildren).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(150);
+
+    expect(replaceChildren).toHaveBeenCalledTimes(1);
+    expect(
+      document.querySelectorAll("[data-connector-canvas] line"),
+    ).toHaveLength(2);
+
+    vi.useRealTimers();
   });
 
   it("redraws when a reveal transition finishes on the connector container", async () => {
@@ -190,6 +233,35 @@ describe("initConnectors", () => {
     const lines = document.querySelectorAll("[data-connector-canvas] line");
     expect(lines).toHaveLength(2);
     expect(lines[0]?.classList.contains("connector-draw")).toBe(false);
+  });
+
+  it("resolves a target whose id contains characters invalid in a bare CSS id selector", () => {
+    // Mirrors the copy.ts fix: `#${id}` breaks once `id` contains a
+    // character CSS selectors treat specially, like a colon. Ids are
+    // generated slugs today, but resolution must not depend on that.
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn() }),
+    );
+    document.body.innerHTML = `
+      <div data-connectors>
+        <svg data-connector-canvas aria-hidden="true"></svg>
+        <span data-connect-from="res:app">app:</span>
+        <div id="res:app">Container App</div>
+      </div>
+    `;
+    const container = document.querySelector<HTMLElement>("[data-connectors]")!;
+    container.getBoundingClientRect = () => rect(0, 0, 400, 200);
+    document
+      .querySelectorAll<HTMLElement>('[data-connect-from], [id^="res:"]')
+      .forEach((element, index) => {
+        element.getBoundingClientRect = () => rect(index * 40);
+      });
+
+    initConnectors(document);
+    expect(
+      document.querySelectorAll("[data-connector-canvas] line"),
+    ).toHaveLength(1);
   });
 
   it("does nothing when the section is absent", () => {

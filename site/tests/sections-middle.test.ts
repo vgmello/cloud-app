@@ -43,6 +43,20 @@ describe("capabilities", () => {
       expect(text).toContain(compute);
     }
   });
+
+  it("styles group sub-headings as headings, not as a repeat of the hero eyebrow", () => {
+    // The hero eyebrow ("TERRAFORM UNDERNEATH · ...") is font-mono +
+    // text-accent with no size bump — a deliberate one-off flourish. Reusing
+    // that exact combination for "Compute" / "Shared services" makes them
+    // read as another eyebrow instead of as headings introducing a group.
+    const host = render(capabilities.render());
+    const headings = [...host.querySelectorAll("h3")];
+    expect(headings.length).toBeGreaterThan(0);
+    for (const heading of headings) {
+      expect(heading.className).not.toMatch(/\btext-accent\b/);
+      expect(heading.className).not.toMatch(/\bfont-mono\b/);
+    }
+  });
 });
 
 describe("environments", () => {

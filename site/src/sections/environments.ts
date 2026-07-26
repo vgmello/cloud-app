@@ -1,15 +1,21 @@
 import { html, escapeHtml } from "../lib/html";
-import { sample } from "../content";
+import { sample, sampleAriaLabel } from "../content";
 import type { Section } from "./index";
 
 const MANIFEST = sample("environments-manifest");
+const MANIFEST_ARIA_LABEL = sampleAriaLabel(MANIFEST);
 
 export const environments: Section = {
   id: "environments",
   render: () => html`
-    <section id="environments" class="border-b border-line">
+    <section
+      id="environments"
+      aria-labelledby="environments-heading"
+      class="border-b border-line"
+    >
       <div class="mx-auto w-full max-w-5xl px-6 py-20 md:py-28">
         <h2
+          id="environments-heading"
           class="text-[clamp(1.75rem,3.4vw,2.75rem)] font-semibold tracking-[-0.03em]"
         >
           One manifest. Every environment.
@@ -28,7 +34,7 @@ export const environments: Section = {
             type="button"
             hidden
             data-copy-target="code-${MANIFEST.id}"
-            aria-label="Copy ${escapeHtml(MANIFEST.filename)}"
+            aria-label="Copy ${escapeHtml(MANIFEST_ARIA_LABEL)}"
             class="absolute right-3 top-3 rounded-md border border-line bg-bg/80 px-2.5 py-1 font-mono text-xs text-muted transition-colors duration-150 hover:text-ink"
           >
             Copy
@@ -37,7 +43,7 @@ export const environments: Section = {
             id="code-${MANIFEST.id}"
             tabindex="0"
             role="region"
-            aria-label="${escapeHtml(MANIFEST.filename)}"
+            aria-label="${escapeHtml(MANIFEST_ARIA_LABEL)}"
             class="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-relaxed text-ink/90"
           ><code>${escapeHtml(MANIFEST.code)}</code></pre>
         </div>

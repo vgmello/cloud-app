@@ -61,6 +61,23 @@ describe("initCopy", () => {
     );
   });
 
+  it("resolves a target whose id contains characters invalid in a bare CSS id selector", async () => {
+    // `id`s are generated slugs today, but resolution must not depend on
+    // that — interpolating an id straight into `#${id}` breaks (or, worse,
+    // silently misresolves) as soon as the id contains a character that CSS
+    // selectors treat specially, like a colon.
+    document.body.innerHTML = `
+      <button type="button" hidden data-copy-target="code:a">Copy</button>
+      <pre id="code:a">name: orders-api</pre>
+    `;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    initCopy(document, { writeText });
+    document.querySelector<HTMLButtonElement>("[data-copy-target]")!.click();
+    await vi.waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("name: orders-api"),
+    );
+  });
+
   it("ignores buttons whose target is missing", () => {
     document.body.innerHTML =
       '<button data-copy-target="nope" hidden>Copy</button>';
@@ -68,6 +85,31 @@ describe("initCopy", () => {
     initCopy(document, { writeText });
     document.querySelector<HTMLButtonElement>("[data-copy-target]")?.click();
     expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("does not issue a second clipboard write while the first one is still in flight", async () => {
+    const { button } = setup();
+    let resolveWrite: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWrite = resolve;
+        }),
+    );
+    initCopy(document, { writeText });
+
+    button.click();
+    button.click(); // rapid re-click before the first write has settled
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+
+    resolveWrite?.();
+    await vi.waitFor(() => expect(button.textContent?.trim()).toBe("Copied"));
+
+    // Once the first write has settled, a fresh click is a new copy and
+    // should go through normally.
+    button.click();
+    expect(writeText).toHaveBeenCalledTimes(2);
   });
 
   it("extends the reset timeout when clicked twice in quick succession", async () => {

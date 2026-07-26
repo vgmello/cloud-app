@@ -79,4 +79,21 @@ describe("initTabs", () => {
     document.body.innerHTML = "<div>no tabs here</div>";
     expect(() => initTabs(document)).not.toThrow();
   });
+
+  it("leaves a tab-less group's panels untouched instead of forcing index 0 open", () => {
+    // With no tabs, `tabs.findIndex(...)` would be -1 and the code below the
+    // early return falls back to `select(0, false)` — which unhides
+    // whichever panel sits at position 0, even though nothing authored that
+    // panel as the active one. The `tabs.length === 0` guard must return
+    // before that runs, so a panel that started `hidden` stays `hidden`.
+    document.body.innerHTML = `
+      <div data-tabs>
+        <div role="tablist"></div>
+        <div id="panel-a" role="tabpanel" hidden>first</div>
+      </div>
+    `;
+    expect(() => initTabs(document)).not.toThrow();
+    const panel = document.querySelector<HTMLElement>('[role="tabpanel"]')!;
+    expect(panel.hidden).toBe(true);
+  });
 });
