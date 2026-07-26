@@ -4,6 +4,7 @@ import { howItWorks } from "./how-it-works";
 import { capabilities } from "./capabilities";
 import { environments } from "./environments";
 import { escapeHatch } from "./escape-hatch";
+import { terraform } from "./terraform";
 import { security } from "./security";
 import { quickstart } from "./quickstart";
 
@@ -19,6 +20,7 @@ export const SECTIONS: readonly Section[] = [
   capabilities,
   environments,
   escapeHatch,
+  terraform,
   security,
   quickstart,
 ];
