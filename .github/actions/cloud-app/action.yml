@@ -34,8 +34,12 @@ inputs:
     description: Control repo name that holds bootstrap.yml
     default: cloud-app
   control-ref:
-    description: Ref of the control repo to run bootstrap.yml from
-    default: main
+    description: >-
+      Ref of the control repo to run bootstrap.yml from. Defaults to the ref this
+      action was resolved at, so the bootstrap matches the action version the
+      caller pinned. Empty for a local (`./`) action reference, where it falls
+      back to main.
+    default: ""
   always_run_terraform:
     description: >-
       Force Terraform (plan + apply) to run on every invocation. When false
@@ -53,6 +57,16 @@ inputs:
       NOT detected here; roll those out with a manual dispatch or with
       always_run_terraform: true.
     default: "false"
+  verify_deploy:
+    description: >-
+      After deploying, check that the manifest's container apps and function
+      apps exist and are healthy, failing the run when they are not. This is
+      what makes a half-built stack or a crash-looping image loud instead of
+      silently green. Set to "false" to skip.
+    default: "true"
+  verify_timeout:
+    description: Seconds to wait for every resource to become healthy.
+    default: "300"
 outputs:
   name:
     description: Resolved stack name (manifest name)
@@ -68,7 +82,7 @@ outputs:
     value: ${{ steps.gate.outputs.should_apply }}
   resource_group:
     description: Resource group created by the bootstrap
-    value: ${{ steps.bootstrap.outputs.resource_group }}
+    value: ${{ steps.phase1.outputs.resource_group }}
   summary:
     description: One-line terraform plan/apply summary
     value: ${{ steps.deploy.outputs.summary }}
@@ -148,16 +162,51 @@ runs:
         private-key: ${{ inputs.app-private-key }}
         owner: ${{ github.repository_owner }}
         repositories: ${{ inputs.control-repo }}
+        # Least privilege: without an explicit permission this token would carry
+        # the App's whole installation permission set into the caller's job —
+        # the least-trusted context in this system. Dispatching has no narrower
+        # scope than actions:write, so note that this token can also cancel or
+        # re-run workflows and delete artifacts/caches in the control repo.
+        # It also carries contents:read, needed for the bootstrap cache lookup
+        # (reading registries/<env>/<stack>.bootstrap.yml); it still cannot
+        # read secrets or administer the repo.
+        permission-actions: write
+        permission-contents: read
+
+    # The fingerprint ships inside this action's own tree, so it describes the
+    # bootstrap stack at the ref the caller pinned. The caller never computes it.
+    - name: Look up bootstrap cache
+      id: cachefetch
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.token.outputs.token }}
+        OWNER: ${{ github.repository_owner }}
+        CONTROL_REPO: ${{ inputs.control-repo }}
+        CACHE_PATH: registries/${{ inputs.env }}/${{ steps.parse.outputs.name }}.bootstrap.yml
+        CACHE_FILE: ${{ runner.temp }}/bootstrap-cache.yml
+      run: python3 "${{ github.action_path }}/../../scripts/fetch_bootstrap_cache.py" "$CACHE_FILE"
+
+    - name: Decide bootstrap
+      id: cache
+      shell: bash
+      env:
+        CACHE_FILE: ${{ runner.temp }}/bootstrap-cache.yml
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp bootstrap-cache
+        --fingerprint-file "${{ github.action_path }}/../../../bootstrap.fingerprint"
+        --cache-file "$CACHE_FILE"
 
     - name: Bootstrap dispatch (Phase 1)
       id: bootstrap
+      if: ${{ steps.cache.outputs.use_cache != 'true' || github.event_name == 'workflow_dispatch' }}
       shell: bash
       env:
         GH_TOKEN: ${{ steps.token.outputs.token }}
         TARGET_OWNER: ${{ github.repository_owner }}
         TARGET_REPO: ${{ inputs.control-repo }}
         TARGET_WORKFLOW: bootstrap.yml
-        TARGET_BRANCH: ${{ inputs.control-ref }}
+        TARGET_BRANCH: ${{ inputs.control-ref || github.action_ref || 'main' }}
         INPUT_REPO: ${{ github.event.repository.name }}
         INPUT_MANIFEST: ${{ inputs.manifest }}
         INPUT_STACK_NAME: ${{ steps.parse.outputs.name }}
@@ -165,6 +214,27 @@ runs:
         INPUT_ENV: ${{ inputs.env }}
         INPUT_PLAN_ONLY: ${{ inputs.plan_only }}
       run: python "${{ github.action_path }}/../../scripts/dispatch_and_wait.py"
+
+    # One source of truth for the ids: the dispatch when it ran, the cache
+    # otherwise. Everything downstream reads this step, never either branch.
+    - name: Resolve bootstrap identities
+      id: phase1
+      shell: bash
+      env:
+        RG: ${{ steps.bootstrap.outputs.resource_group || steps.cache.outputs.resource_group }}
+        PLAN_ID: ${{ steps.bootstrap.outputs.plan_client_id || steps.cache.outputs.plan_client_id }}
+        APPLY_ID: ${{ steps.bootstrap.outputs.apply_client_id || steps.cache.outputs.apply_client_id }}
+      run: |
+        if [ -z "$RG" ] || [ -z "$PLAN_ID" ] || [ -z "$APPLY_ID" ]; then
+          echo "::error::bootstrap identities unresolved (resource_group='$RG'); the bootstrap dispatch did not return them"
+          exit 1
+        fi
+        {
+          echo "resource_group=$RG"
+          echo "plan_client_id=$PLAN_ID"
+          echo "apply_client_id=$APPLY_ID"
+        } >> "$GITHUB_OUTPUT"
+        echo "cloud-app: phase 1 via ${{ steps.bootstrap.outcome == 'skipped' && 'cache' || 'dispatch' }}"
 
     - name: Bootstrap dispatch summary
       if: always()
@@ -183,7 +253,11 @@ runs:
           echo "- **Stack Name:** \`$STACK_NAME\`"
           echo "- **Environment:** \`$DEPLOY_ENV\`"
           echo "- **Caller Branch:** \`$CALLER_BRANCH\`"
-          echo "- **[View Control Bootstrap Run]($TARGET_RUN_URL)**"
+          if [ -z "$TARGET_RUN_URL" ]; then
+            echo "- **Phase 1:** served from the cached bootstrap result (no dispatch)"
+          else
+            echo "- **[View Control Bootstrap Run]($TARGET_RUN_URL)**"
+          fi
         } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Read platform config
@@ -215,7 +289,7 @@ runs:
       if: ${{ steps.parse.outputs.docker == 'true' && inputs.plan_only == 'false' }}
       uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
       with:
-        client-id: ${{ steps.bootstrap.outputs.apply_client_id }}
+        client-id: ${{ steps.phase1.outputs.apply_client_id }}
         tenant-id: ${{ steps.platform.outputs.tenant_id }}
         subscription-id: ${{ steps.platform.outputs.subscription_id }}
 
@@ -239,7 +313,7 @@ runs:
     - name: Azure login (deploy)
       uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
       with:
-        client-id: ${{ inputs.plan_only == 'true' && steps.bootstrap.outputs.plan_client_id || steps.bootstrap.outputs.apply_client_id }}
+        client-id: ${{ inputs.plan_only == 'true' && steps.phase1.outputs.plan_client_id || steps.phase1.outputs.apply_client_id }}
         tenant-id: ${{ steps.platform.outputs.tenant_id }}
         subscription-id: ${{ steps.platform.outputs.subscription_id }}
 
@@ -393,7 +467,7 @@ runs:
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
         --image-tags "$IMAGE_TAGS"
-        --resource-group "${{ steps.bootstrap.outputs.resource_group }}"
+        --resource-group "${{ steps.phase1.outputs.resource_group }}"
 
     - name: Terraform deploy
       id: deploy
@@ -437,7 +511,26 @@ runs:
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
 
+    # Reality check, not bookkeeping: confirm the declared resources exist and
+    # are healthy. Runs after BOTH lanes — and even when neither changed
+    # anything — so a half-built stack cannot report success.
+    - name: Verify deployment
+      if: ${{ inputs.plan_only == 'false' && inputs.verify_deploy != 'false' }}
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+        VERIFY_TIMEOUT: ${{ inputs.verify_timeout }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp verify-deploy
+        --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
+        --environment "$DEPLOY_ENV"
+        --platform-file "${{ steps.platform.outputs.file }}"
+        --resource-group "${{ steps.phase1.outputs.resource_group }}"
+        --timeout "$VERIFY_TIMEOUT"
+
     - name: Write summary
+      if: always()
       shell: bash
       env:
         SHOULD_APPLY: ${{ steps.gate.outputs.should_apply }}

@@ -247,6 +247,44 @@ def test_rotate_images_cli_invokes_az_per_image(tmp_path, monkeypatch, capsys):
     assert "reg/orders-api/main-main:sha1" in calls[0]
 
 
+def test_verify_deploy_cli_probes_the_expected_app(tmp_path, monkeypatch):
+    import json as _json
+
+    from cloudapp import cli, runner
+
+    tool = {"name": "orders-api", "apps": {"api": {"replicas": {"min": 1}}}, "functions": {}}
+    (tmp_path / "tool.dev.json").write_text(_json.dumps(tool))
+    (tmp_path / "dev.yml").write_text('naming_prefix: ""\nstate_backend:\n  type: azurerm\n')
+
+    calls = []
+
+    class _R:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, stdout=""):
+            self.stdout = stdout
+
+    def fake_run(cmd, check=False, capture=False):
+        calls.append(cmd)
+        if "revision" in cmd:
+            return _R('{"prov": "Provisioned", "running": "Running"}')
+        return _R("rev1\n")
+
+    monkeypatch.setattr(runner, "run", fake_run)
+
+    cli.main([
+        "verify-deploy",
+        "--tool-json", str(tmp_path / "tool.dev.json"),
+        "--environment", "dev",
+        "--platform-file", str(tmp_path / "dev.yml"),
+        "--resource-group", "rg-x",
+    ])
+
+    assert calls[0][:3] == ["az", "containerapp", "show"]
+    assert "ca-orders-api-dev" in calls[0]
+
+
 def test_prepare_custom_tf_stages_caller_files(tmp_path):
     app_root = tmp_path / "app"
     (app_root / "terraform").mkdir(parents=True)
@@ -356,3 +394,155 @@ def test_prepare_custom_tf_reports_error_for_bad_provider(tmp_path):
     ])
 
     assert rc == 1
+
+
+def test_subprocess_failure_surfaces_as_error_annotation(tmp_path, monkeypatch, capsys):
+    """A docker/az invocation that exits non-zero must produce an ::error::
+    annotation with the captured output, not a raw traceback.
+
+    Driven through docker-build because dockerbuild.build_and_push is one of the
+    real call sites that runs with check=True.
+    """
+    import json as _json
+    import subprocess
+
+    from cloudapp import cli, runner
+
+    tool = {
+        "name": "orders-api",
+        "apps": {"api": {"containers": {"main": {}}}},
+        "functions": {},
+    }
+    (tmp_path / "tool.dev.json").write_text(_json.dumps(tool))
+
+    def boom(cmd, check=False, capture=False, cwd=None):
+        raise subprocess.CalledProcessError(127, cmd, output="", stderr="az: login failed")
+
+    monkeypatch.setattr(runner, "run", boom)
+
+    rc = cli.main([
+        "docker-build",
+        "--tool-json", str(tmp_path / "tool.dev.json"),
+        "--tool-name", "orders-api",
+        "--registry", "acme.azurecr.io",
+        "--git-sha", "abc123",
+    ])
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "::error::" in out
+    assert "exit 127" in out
+    assert "az: login failed" in out, "captured stderr must reach the log"
+
+
+def test_subprocess_failure_redacts_credential_arguments():
+    """The handler echoes argv, so a secret-bearing flag must not leak."""
+    from cloudapp import cli
+
+    rendered = cli._redact_cmd(
+        ["az", "keyvault", "secret", "set", "--name", "stripe-key", "--value", "sk_live_secret"]
+    )
+    assert "sk_live_secret" not in rendered
+    assert "--value ***" in rendered
+    assert "--name stripe-key" in rendered
+
+
+def test_bootstrap_cache_cli_uses_a_matching_cache(tmp_path, monkeypatch, capsys):
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "fp").write_text("sha256:abc\n")
+    (tmp_path / "cache.yml").write_text(
+        "resource_group: rg-orders-api-dev\n"
+        "plan_client_id: 1111\n"
+        "apply_client_id: 2222\n"
+        "fingerprint: sha256:abc\n"
+    )
+
+    cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "fp"),
+        "--cache-file", str(tmp_path / "cache.yml"),
+    ])
+
+    written = out_file.read_text()
+    assert "use_cache=true" in written
+    assert "resource_group=rg-orders-api-dev" in written
+    assert "plan_client_id=1111" in written
+
+
+def test_bootstrap_cache_cli_misses_when_file_absent(tmp_path, monkeypatch):
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "fp").write_text("sha256:abc\n")
+
+    cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "fp"),
+        "--cache-file", str(tmp_path / "nope.yml"),
+    ])
+
+    assert "use_cache=false" in out_file.read_text()
+
+
+def test_bootstrap_cache_cli_misses_on_stale_fingerprint(tmp_path, monkeypatch):
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "fp").write_text("sha256:current\n")
+    (tmp_path / "cache.yml").write_text(
+        "resource_group: rg\nplan_client_id: 1\napply_client_id: 2\n"
+        "fingerprint: sha256:stale\n"
+    )
+
+    cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "fp"),
+        "--cache-file", str(tmp_path / "cache.yml"),
+    ])
+
+    assert "use_cache=false" in out_file.read_text()
+
+
+def test_bootstrap_cache_cli_misses_on_malformed_cache(tmp_path, monkeypatch):
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "fp").write_text("sha256:abc\n")
+    (tmp_path / "cache.yml").write_text("just a string\n")
+
+    cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "fp"),
+        "--cache-file", str(tmp_path / "cache.yml"),
+    ])
+
+    assert "use_cache=false" in out_file.read_text()
+
+
+def test_bootstrap_cache_cli_misses_on_unreadable_fingerprint(tmp_path, monkeypatch):
+    """exists() is true for a directory; an unreadable fingerprint must miss,
+    not crash the deploy."""
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "adir").mkdir()
+    (tmp_path / "cache.yml").write_text(
+        "resource_group: rg\nplan_client_id: 1\napply_client_id: 2\n"
+        "fingerprint: sha256:abc\n"
+    )
+
+    rc = cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "adir"),
+        "--cache-file", str(tmp_path / "cache.yml"),
+    ])
+
+    assert rc == 0
+    assert "use_cache=false" in out_file.read_text()

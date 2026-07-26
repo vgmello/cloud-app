@@ -131,6 +131,19 @@ functions:
     package: ./cron # zipped as-is, no build
 ```
 
+## Versioning
+
+The control repo publishes floating tags: `v1` moves on every minor and patch
+release, `v1.1` moves on every patch release, and `v1.1.1` (a full
+major.minor.patch tag) never moves. Pin whichever one matches how much churn
+you're willing to accept in your `uses:` line.
+
+Whatever tag you pin also pins the bootstrap: the caller's job dispatches the
+control repo's `bootstrap.yml` at that same ref, so pinning an immutable tag
+(`v1.1.1`) pins the bootstrap stack as well as the action. A fix to the
+bootstrap stack reaches you only when you move your pin to a tag (or `main`)
+that includes it.
+
 ## Caller-supplied Terraform
 
 For a resource the platform doesn't model, point `terraform:` at a directory of
@@ -271,3 +284,15 @@ See [trust-modes.md](trust-modes.md) for the three deploy identities, self vs de
 - One manifest (one platform call) per workflow run: the config artifact
   name is fixed, so invoking the `cloud-app` action twice in a single run is
   not supported.
+- Post-deploy verification: the action checks every container app and
+  function app exists and is healthy, and fails the run if not — a
+  crash-looping image or an incomplete stack (partial earlier deploy) are the
+  two common causes. Function apps are checked only for existence and a
+  `Running` state, not application health — there is no equivalent of the
+  container app's revision provisioning check. A stack containing only
+  static sites is not verified at all, since static sites have no revisions
+  to check. Set `verify_deploy: false` to skip the check entirely, or
+  `verify_timeout` (seconds to wait for every resource to become healthy,
+  default 300) to tune how long it polls before failing. Re-run with
+  `always_run_terraform: true` (or a manual dispatch) to force a full
+  Terraform run and finish an incomplete stack.

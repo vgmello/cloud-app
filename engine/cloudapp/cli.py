@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,7 @@ import yaml
 
 from . import (
     backend,
+    bootcache,
     builds,
     customtf,
     dockerbuild,
@@ -24,8 +26,33 @@ from . import (
     runner,
     secrets,
     tfdeploy,
+    verify,
 )
 from .yamlcompat import load_yaml
+
+# Flags whose following argument is a credential. The CalledProcessError handler
+# echoes argv, and it is deliberately generic, so redact rather than rely on
+# every future call site avoiding check=True with a secret on the command line.
+_SECRET_FLAGS = frozenset({
+    "--value", "--password", "--token", "--secret", "--client-secret", "--private-key",
+})
+
+
+def _redact_cmd(cmd):
+    """Render argv for an error message with credential arguments masked."""
+    if isinstance(cmd, str):
+        return cmd
+    parts = []
+    redact_next = False
+    for raw in cmd:
+        part = str(raw)
+        if redact_next:
+            parts.append("***")
+            redact_next = False
+            continue
+        parts.append(part)
+        redact_next = part in _SECRET_FLAGS
+    return " ".join(parts)
 
 
 def _load_json(path):
@@ -124,6 +151,16 @@ def cmd_rotate_images(args):
     rotate.rotate(tool, prefix, args.environment, image_tags, args.resource_group, runner.run)
 
 
+def cmd_verify_deploy(args):
+    tool = _load_json(args.tool_json)
+    platform = _load_platform(args.platform_file)
+    prefix = platform.get("naming_prefix") or ""
+    verify.verify(
+        tool, prefix, args.environment, args.resource_group, runner.run,
+        timeout=args.timeout,
+    )
+
+
 def cmd_terraform_deploy(args):
     tool = _load_json(args.tool_json)
     backend_lines, tags, runner_ip = tfdeploy.prepare(
@@ -190,6 +227,33 @@ def cmd_bootstrap_vars(args):
         ),
     }
     print(json.dumps(out))
+
+
+def cmd_bootstrap_fingerprint(args):
+    print(bootcache.fingerprint(args.root))
+
+
+def cmd_bootstrap_cache(args):
+    # Any unreadable fingerprint is a miss, never a failure: exists() is true for
+    # a directory and for a permission-denied file, and this command must always
+    # fall back to "dispatch" rather than break the deploy.
+    try:
+        local = Path(args.fingerprint_file).read_text().strip()
+    except OSError as exc:
+        gha.warning(f"ignoring unreadable bootstrap fingerprint: {exc}")
+        local = ""
+    cache = None
+    cache_path = Path(args.cache_file)
+    if cache_path.exists():
+        try:
+            cache = load_yaml(cache_path.read_text())
+        except Exception as exc:  # a malformed cache is a miss, never a failure
+            gha.warning(f"ignoring unreadable bootstrap cache: {exc}")
+    hit = bootcache.use_cache(local, cache)
+    outputs = {"use_cache": "true" if hit else "false"}
+    outputs.update(bootcache.cache_values(cache) if hit else bootcache.cache_values(None))
+    gha.write_outputs(outputs)
+    print(f"bootstrap cache: {'hit' if hit else 'miss'}")
 
 
 def cmd_validate_lock(args):
@@ -286,6 +350,14 @@ def main(argv=None):
     p.add_argument("--resource-group", required=True)
     p.set_defaults(func=cmd_rotate_images)
 
+    p = sub.add_parser("verify-deploy")
+    p.add_argument("--tool-json", required=True)
+    p.add_argument("--environment", required=True)
+    p.add_argument("--platform-file", required=True)
+    p.add_argument("--resource-group", required=True)
+    p.add_argument("--timeout", type=int, default=300)
+    p.set_defaults(func=cmd_verify_deploy)
+
     p = sub.add_parser("terraform-deploy")
     p.add_argument("--terraform-dir", required=True)
     p.add_argument("--tfvars-file", required=True)
@@ -321,6 +393,15 @@ def main(argv=None):
     p.add_argument("--platform-file", required=True)
     p.set_defaults(func=cmd_bootstrap_vars)
 
+    p = sub.add_parser("bootstrap-fingerprint")
+    p.add_argument("--root", default=".")
+    p.set_defaults(func=cmd_bootstrap_fingerprint)
+
+    p = sub.add_parser("bootstrap-cache")
+    p.add_argument("--fingerprint-file", required=True)
+    p.add_argument("--cache-file", required=True)
+    p.set_defaults(func=cmd_bootstrap_cache)
+
     p = sub.add_parser("validate-lock")
     p.add_argument("--environment", required=True)
     p.add_argument("--stack-file", required=True)
@@ -335,8 +416,21 @@ def main(argv=None):
         args.func(args)
     except (manifest.ManifestError, resolve.ResolveError, secrets.SyncError,
             tfdeploy.DeployError, backend.BackendError, rotate.RotateError,
-            customtf.CustomTfError, registry.RegistryError, ValueError) as exc:
+            customtf.CustomTfError, verify.VerifyError,
+            registry.RegistryError, ValueError) as exc:
         gha.error(str(exc))
+        return 1
+    except subprocess.CalledProcessError as exc:
+        # docker/az/terraform invocations that run with check=True raise this.
+        # Catching it here keeps every failure an actionable ::error:: annotation
+        # instead of a traceback, including from modules added later.
+        # Captured output never reached the log, so surface it before the
+        # annotation — otherwise a failing `terraform output` reports only an
+        # exit code.
+        for stream in (exc.stdout, exc.stderr):
+            if stream:
+                print(stream if isinstance(stream, str) else stream.decode(errors="replace"))
+        gha.error(f"command failed (exit {exc.returncode}): {_redact_cmd(exc.cmd)}")
         return 1
     return 0
 
