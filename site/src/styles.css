@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: oklch(0.145 0.005 260);
+  --color-surface: oklch(0.185 0.006 260);
+  --color-line: oklch(0.26 0.008 260);
+  --color-ink: oklch(0.96 0.003 260);
+  --color-muted: oklch(0.72 0.008 260);
+  --color-accent: oklch(0.78 0.13 180);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-muted);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: var(--color-ink);
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--color-accent) 30%, transparent);
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  .prose-measure {
+    max-width: 68ch;
+  }
+
+  .will-reveal {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  .is-revealed {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 620ms var(--ease-out-quint) var(--reveal-delay, 0ms),
+      transform 620ms var(--ease-out-quint) var(--reveal-delay, 0ms);
+  }
+
+  .connector {
+    stroke: var(--color-line);
+    stroke-width: 1;
+  }
+
+  .connector-draw {
+    stroke-dasharray: 240;
+    stroke-dashoffset: 240;
+    animation: connector-draw 900ms var(--ease-out-quint) forwards;
+  }
+
+  @keyframes connector-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .will-reveal {
+    opacity: 1;
+    transform: none;
+  }
+
+  .is-revealed {
+    transition: opacity 120ms linear;
+  }
+
+  .connector-draw {
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media print {
+  .will-reveal {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -8,6 +8,8 @@ scenes each tool gets a
 full stack — Container Apps / Functions / Static Web Apps, Key Vault, optional
 database and blob storage — wired together over private networking by default.
 
+Landing page: <https://vgmello.github.io/cloud-app/> (source in [`site/`](site/)).
+
 ## For app teams
 
 Two files in your repo:
