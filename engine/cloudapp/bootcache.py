@@ -44,16 +44,23 @@ def fingerprint(root, subpaths=COVERED):
     return f"sha256:{digest.hexdigest()}"
 
 
+def _value(cache, key):
+    """A required value, normalised. Whitespace-only is treated as absent: it is
+    truthy in Python, and a blank identity must never read as a genuine match."""
+    raw = cache.get(key)
+    return "" if raw is None else str(raw).strip()
+
+
 def use_cache(local_fingerprint, cache):
     """True only on a positive match. Every other outcome means dispatch."""
     if not local_fingerprint or not isinstance(cache, dict):
         return False
     if cache.get("fingerprint") != local_fingerprint:
         return False
-    return all(cache.get(key) for key in _REQUIRED)
+    return all(_value(cache, key) for key in _REQUIRED)
 
 
 def cache_values(cache):
     """The three bootstrap values, empty strings when the cache is unusable."""
     source = cache if isinstance(cache, dict) else {}
-    return {key: source.get(key) or "" for key in _REQUIRED}
+    return {key: _value(source, key) for key in _REQUIRED}

@@ -93,3 +93,16 @@ def test_cache_values_returns_empty_strings_when_absent():
         "plan_client_id": "",
         "apply_client_id": "",
     }
+
+
+def test_use_cache_false_on_whitespace_only_value():
+    # " " is truthy in Python; a blank identity must not read as a match
+    for key in ("resource_group", "plan_client_id", "apply_client_id"):
+        cache = dict(GOOD)
+        cache[key] = "   "
+        assert bootcache.use_cache(FP, cache) is False, key
+
+
+def test_cache_values_normalises_whitespace_and_non_strings():
+    assert bootcache.cache_values({"resource_group": "  rg  "})["resource_group"] == "rg"
+    assert bootcache.cache_values({"plan_client_id": None})["plan_client_id"] == ""
