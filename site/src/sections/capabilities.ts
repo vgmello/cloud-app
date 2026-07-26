@@ -8,12 +8,14 @@ interface Entry {
 
 interface Group {
   readonly title: string;
+  readonly note?: string;
   readonly entries: readonly Entry[];
 }
 
 const GROUPS: readonly Group[] = [
   {
     title: "Compute",
+    note: "Today's Azure primitives — the manifest schema does not pin the platform to them.",
     entries: [
       {
         term: "Container Apps",
@@ -77,6 +79,11 @@ export const capabilities: Section = {
                 <h3 class="font-mono text-sm text-accent">
                   ${escapeHtml(group.title)}
                 </h3>
+                ${group.note
+                  ? html`<p class="mt-1 text-xs text-muted">
+                      ${escapeHtml(group.note)}
+                    </p>`
+                  : ""}
                 <dl class="mt-5 divide-y divide-line border-t border-line">
                   ${group.entries.map(
                     (entry) => html`
