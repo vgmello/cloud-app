@@ -35,7 +35,7 @@ const PROPERTIES: readonly Property[] = [
   {
     lead: "Real plans.",
     detail:
-      "Every change runs a Terraform plan on the pull request, in the format you already know how to read, there to read in the run summary before anything is applied.",
+      "Every pull request runs a Terraform plan and leaves it in the run summary — the same output you already know how to read, waiting there before anything is applied.",
   },
 ];
 
