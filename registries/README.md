@@ -34,6 +34,39 @@ registered_at: 2026-07-24T12:00:00Z
 - The gate creates the file automatically on first deploy; edit it to add or
   remove authorized repos.
 
+## Bootstrap cache
+
+Alongside each lock, `registries/<env>/<stack>.bootstrap.yml` caches what the
+bootstrap produced — the resource group, the plan/apply client ids, and a
+fingerprint of the bootstrap stack it was produced from:
+
+```yaml
+stack_name: orders-api
+environment: dev
+resource_group: rg-orders-api-dev
+plan_client_id: ...
+apply_client_id: ...
+fingerprint: sha256:...
+```
+
+A deploy skips the bootstrap dispatch when this file's `fingerprint` matches the
+one shipped with the action version the caller pinned. It is written by the
+bootstrap itself; deleting it is always safe and simply makes the next deploy
+bootstrap again.
+
+### Revoking a repository's access
+
+Removing a repo from `allowed_repos` is **not sufficient on its own.** The
+federated credential that lets that repo obtain Azure tokens lives in Azure
+until a bootstrap re-runs and rewrites it — and while a valid cache exists, no
+bootstrap runs. To revoke access:
+
+1. Remove the repo from `allowed_repos` in `registries/<env>/<stack>.yml`.
+2. **Delete `registries/<env>/<stack>.bootstrap.yml`.**
+
+Step 2 forces the next deploy to bootstrap, which re-federates the identities to
+the remaining `allowed_repos`.
+
 ## Caller usage
 
 An app repo deploys a stack by running the `cloud-app` action as a step in
