@@ -30,7 +30,9 @@ registered_at: 2026-07-24T12:00:00Z
 ```
 
 - `allowed_repos` — full `owner/name` entries permitted to deploy this stack.
-  Add an entry here (via PR to this repo) to grant another repo access.
+  Editing this list alone is **not sufficient** to grant or revoke access when
+  a bootstrap cache exists for the stack — see "Granting a repository access"
+  and "Revoking a repository's access" below.
 - The gate creates the file automatically on first deploy; edit it to add or
   remove authorized repos.
 
@@ -47,6 +49,7 @@ resource_group: rg-orders-api-dev
 plan_client_id: ...
 apply_client_id: ...
 fingerprint: sha256:...
+updated_at: 2026-07-26T10:00:00Z
 ```
 
 A deploy skips the bootstrap dispatch when this file's `fingerprint` matches the
@@ -54,18 +57,50 @@ one shipped with the action version the caller pinned. It is written by the
 bootstrap itself; deleting it is always safe and simply makes the next deploy
 bootstrap again.
 
-### Revoking a repository's access
+When several repos share one `allowed_repos` entry, they should all pin the
+**same** action version. The cache is one file per `(stack, environment)`, but
+the fingerprint each caller compares against comes from its own pinned action
+tree — if repo A pins `@v1` and repo B pins `@v1.0.3` and those resolve to
+different fingerprints, each deploy invalidates the other's cache, and the two
+repos alternate re-bootstrapping (and re-applying) the stack on every deploy.
+Mixed pins across `allowed_repos` should be treated as a misconfiguration to
+fix, not a stable state.
 
-Removing a repo from `allowed_repos` is **not sufficient on its own.** The
-federated credential that lets that repo obtain Azure tokens lives in Azure
-until a bootstrap re-runs and rewrites it — and while a valid cache exists, no
-bootstrap runs. To revoke access:
+### Granting a repository access
 
-1. Remove the repo from `allowed_repos` in `registries/<env>/<stack>.yml`.
+Adding a repo to `allowed_repos` is **not sufficient on its own** when a valid
+bootstrap cache already exists for the stack. A cache hit skips the bootstrap
+dispatch entirely, so the newly-added repo's first deploy never gets a
+federated credential minted for it — it hits the cache, skips straight to the
+resource deploy, and `azure/login` fails with an opaque OIDC subject error. To
+grant access:
+
+1. Add the repo to `allowed_repos` in `registries/<env>/<stack>.yml`.
 2. **Delete `registries/<env>/<stack>.bootstrap.yml`.**
 
-Step 2 forces the next deploy to bootstrap, which re-federates the identities to
-the remaining `allowed_repos`.
+Step 2 forces the next deploy (from any allowed repo) to bootstrap, which
+federates the identities to the full, updated `allowed_repos` list — including
+the new repo.
+
+### Revoking a repository's access
+
+Removing a repo from `allowed_repos` is **not sufficient on its own, and it is
+not enough to pair with deleting the cache either.** The federated credential
+that lets the revoked repo obtain Azure tokens lives in Azure until a
+bootstrap re-runs and rewrites it. Deleting the cache file only forces the
+_next_ deploy to dispatch a bootstrap — it does not choose who performs that
+deploy. If the revoked repo itself is the one that deploys next, its dispatch
+is rejected by the registry gate (`cloudapp validate-lock` /
+`registry.authorize_caller`) before Terraform runs, because it is no longer in
+`allowed_repos` — so no bootstrap runs and the stale federated credential
+survives. To revoke access:
+
+1. Remove the repo from `allowed_repos` in `registries/<env>/<stack>.yml`.
+2. Delete `registries/<env>/<stack>.bootstrap.yml`.
+3. **Trigger a deploy from a repo that is still allowed** (or delete the
+   federated credential on the plan/apply identities directly in Azure),
+   because only an authorized bootstrap run rewrites the federation. Until one
+   of those happens, the removed repo can still obtain Azure tokens.
 
 ## Caller usage
 

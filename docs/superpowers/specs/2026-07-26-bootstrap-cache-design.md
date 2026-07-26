@@ -171,7 +171,7 @@ operational sharp edge the cache introduces.
 - `.github/actions/deploy-stack/action.yml` — write the cache file on success
 - `engine/cloudapp/cli.py` — `bootstrap-fingerprint` and `bootstrap-cache` commands
 - `registries/README.md` — the cache file, and the revocation procedure
-- `docs/usage.md`, `docs/trust-modes.md` — versioning and the cached path
+- `docs/usage.md` — versioning and the cached path
 
 ## Testing
 
