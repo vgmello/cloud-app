@@ -38,9 +38,14 @@ const PROPERTIES: readonly Property[] = [
 export const security: Section = {
   id: "security",
   render: () => html`
-    <section id="security" class="border-b border-line">
+    <section
+      id="security"
+      aria-labelledby="security-heading"
+      class="border-b border-line"
+    >
       <div class="mx-auto w-full max-w-5xl px-6 py-20 md:py-28">
         <h2
+          id="security-heading"
           class="text-[clamp(1.75rem,3.4vw,2.75rem)] font-semibold tracking-[-0.03em]"
         >
           The parts a platform team asks about first.

@@ -1,5 +1,5 @@
 import { html, escapeHtml } from "../lib/html";
-import { DOCS, sample } from "../content";
+import { DOCS, sample, sampleAriaLabel } from "../content";
 import type { CodeSample } from "../content";
 import type { Section } from "./index";
 
@@ -11,6 +11,7 @@ const TABS = [
 
 function codePanel(entry: CodeSample, active: boolean): string {
   const { id, filename, code, kind } = entry;
+  const ariaLabel = sampleAriaLabel(entry);
   const copyButton =
     kind === "resources"
       ? ""
@@ -19,7 +20,7 @@ function codePanel(entry: CodeSample, active: boolean): string {
             type="button"
             hidden
             data-copy-target="code-${id}"
-            aria-label="Copy ${escapeHtml(filename)}"
+            aria-label="Copy ${escapeHtml(ariaLabel)}"
             class="absolute right-3 top-3 rounded-md border border-line bg-bg/80 px-2.5 py-1 font-mono text-xs text-muted transition-colors duration-150 hover:text-ink focus-visible:text-ink"
           >
             Copy
@@ -39,7 +40,7 @@ function codePanel(entry: CodeSample, active: boolean): string {
         id="code-${id}"
         tabindex="0"
         role="region"
-        aria-label="${escapeHtml(filename)}"
+        aria-label="${escapeHtml(ariaLabel)}"
         class="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-relaxed text-ink/90"
       ><code>${escapeHtml(code)}</code></pre>
       <p class="sr-only">${escapeHtml(filename)}</p>
@@ -50,10 +51,14 @@ function codePanel(entry: CodeSample, active: boolean): string {
 export const hero: Section = {
   id: "hero",
   render: () => html`
-    <section id="hero" class="relative overflow-hidden border-b border-line">
+    <section
+      id="hero"
+      aria-labelledby="hero-heading"
+      class="relative overflow-hidden border-b border-line"
+    >
       <div
         aria-hidden="true"
-        class="pointer-events-none absolute inset-0 opacity-50 [background-image:linear-gradient(var(--color-line)_1px,transparent_1px),linear-gradient(90deg,var(--color-line)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:radial-gradient(90%_60%_at_50%_0%,black,transparent)]"
+        class="pointer-events-none absolute inset-0 [background:radial-gradient(80%_55%_at_50%_-10%,color-mix(in_oklch,var(--color-accent)_10%,transparent),transparent_70%)]"
       ></div>
 
       <div
@@ -64,6 +69,7 @@ export const hero: Section = {
         </p>
 
         <h1
+          id="hero-heading"
           class="mt-7 max-w-3xl text-[clamp(2.25rem,6vw,4.5rem)] font-semibold leading-[1.04] tracking-[-0.035em]"
         >
           Ship infrastructure without writing Terraform.

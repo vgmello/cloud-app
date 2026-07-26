@@ -24,9 +24,14 @@ const STEPS: readonly Step[] = [
 export const howItWorks: Section = {
   id: "how-it-works",
   render: () => html`
-    <section id="how-it-works" class="border-b border-line">
+    <section
+      id="how-it-works"
+      aria-labelledby="how-it-works-heading"
+      class="border-b border-line"
+    >
       <div class="mx-auto w-full max-w-5xl px-6 py-20 md:py-28">
         <h2
+          id="how-it-works-heading"
           class="text-[clamp(1.75rem,3.4vw,2.75rem)] font-semibold tracking-[-0.03em]"
         >
           Three steps, then it is just your pipeline.

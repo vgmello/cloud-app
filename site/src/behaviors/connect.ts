@@ -1,3 +1,5 @@
+import { getById } from "../lib/dom";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export function initConnectors(root: ParentNode = document): void {
@@ -22,9 +24,7 @@ export function initConnectors(root: ParentNode = document): void {
         "[data-connect-from]",
       )) {
         const target = source.dataset.connectFrom
-          ? container.querySelector<HTMLElement>(
-              `#${source.dataset.connectFrom}`,
-            )
+          ? getById(container, source.dataset.connectFrom)
           : null;
         if (!target) continue;
 
@@ -44,7 +44,6 @@ export function initConnectors(root: ParentNode = document): void {
     };
 
     draw();
-    window.addEventListener("resize", draw, { passive: true });
 
     // `draw()` above runs synchronously right after `initReveal` applies
     // `will-reveal` (opacity: 0; translateY(12px)), so the first pass bakes
@@ -75,15 +74,24 @@ export function initConnectors(root: ParentNode = document): void {
     // stopped arriving for a quiet period comfortably longer than the
     // 60ms stagger gap. That way one scroll produces exactly one redraw,
     // using the final settled geometry.
+    //
+    // `resize` shares this same debounce: a window drag can fire it far more
+    // often than the display can usefully redraw, for the same reasons as
+    // the staggered `transitionend` burst above.
     const REDRAW_DEBOUNCE_MS = 150;
     let redrawTimer: ReturnType<typeof setTimeout> | undefined;
-    container.addEventListener("transitionend", (event) => {
-      if (event.propertyName !== "transform") return;
+    const scheduleRedraw = (): void => {
       if (redrawTimer !== undefined) clearTimeout(redrawTimer);
       redrawTimer = setTimeout(() => {
         redrawTimer = undefined;
         draw();
       }, REDRAW_DEBOUNCE_MS);
+    };
+
+    window.addEventListener("resize", scheduleRedraw, { passive: true });
+    container.addEventListener("transitionend", (event) => {
+      if (event.propertyName !== "transform") return;
+      scheduleRedraw();
     });
   }
 }

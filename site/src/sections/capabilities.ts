@@ -64,9 +64,14 @@ const GROUPS: readonly Group[] = [
 export const capabilities: Section = {
   id: "capabilities",
   render: () => html`
-    <section id="capabilities" class="border-b border-line">
+    <section
+      id="capabilities"
+      aria-labelledby="capabilities-heading"
+      class="border-b border-line"
+    >
       <div class="mx-auto w-full max-w-5xl px-6 py-20 md:py-28">
         <h2
+          id="capabilities-heading"
           class="text-[clamp(1.75rem,3.4vw,2.75rem)] font-semibold tracking-[-0.03em]"
         >
           What the manifest can ask for.
@@ -76,7 +81,7 @@ export const capabilities: Section = {
           ${GROUPS.map(
             (group) => html`
               <div data-reveal>
-                <h3 class="font-mono text-sm text-accent">
+                <h3 class="text-lg font-semibold text-ink">
                   ${escapeHtml(group.title)}
                 </h3>
                 ${group.note
