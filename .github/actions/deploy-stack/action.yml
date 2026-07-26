@@ -191,6 +191,49 @@ runs:
 
         echo "### Bootstrap: $STACK_NAME ($TARGET_ENV) — ${DEPLOY_OUTCOME:-unknown}" >> "$GITHUB_STEP_SUMMARY"
 
+    # Cache the result so later deploys of this stack can skip the dispatch.
+    # Fails open: the cache is an optimisation, and a missing one just means the
+    # next deploy bootstraps as before. Never fail the bootstrap over it.
+    - name: Cache bootstrap result
+      if: ${{ success() }}
+      shell: bash
+      env:
+        STACK_NAME: ${{ inputs.stack-name }}
+        TARGET_ENV: ${{ inputs.environment }}
+      run: |
+        set -uo pipefail
+        RG=$(jq -r '.resource_group // ""' outputs/deployment-results.json)
+        PLAN_ID=$(jq -r '.plan_client_id // ""' outputs/deployment-results.json)
+        APPLY_ID=$(jq -r '.apply_client_id // ""' outputs/deployment-results.json)
+        if [ -z "$RG" ] || [ -z "$PLAN_ID" ] || [ -z "$APPLY_ID" ]; then
+          echo "::warning::bootstrap outputs incomplete; not caching"
+          exit 0
+        fi
+        FP=$(PYTHONPATH=central-workspace/engine python3 -m cloudapp bootstrap-fingerprint --root central-workspace)
+        DEST="central-workspace/registries/$TARGET_ENV/$STACK_NAME.bootstrap.yml"
+        mkdir -p "$(dirname "$DEST")"
+        cat > "$DEST" <<EOF
+        stack_name: $STACK_NAME
+        environment: $TARGET_ENV
+        resource_group: $RG
+        plan_client_id: $PLAN_ID
+        apply_client_id: $APPLY_ID
+        fingerprint: $FP
+        updated_at: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+        EOF
+        cd central-workspace
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add "registries/$TARGET_ENV/$STACK_NAME.bootstrap.yml"
+        if git diff --cached --quiet; then
+          echo "bootstrap cache unchanged"
+          exit 0
+        fi
+        git commit -m "cache(bootstrap): $STACK_NAME [$TARGET_ENV]" \
+          && git pull --rebase origin main \
+          && git push origin main \
+          || echo "::warning::could not persist the bootstrap cache; the next deploy will bootstrap again"
+
     - name: Upload bootstrap outputs
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

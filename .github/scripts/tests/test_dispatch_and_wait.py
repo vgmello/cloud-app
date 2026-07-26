@@ -173,6 +173,25 @@ def test_status_line_other(dw):
     assert dw.status_line("in_progress") == "Status: in_progress..."
 
 
+def test_resolve_ref_falls_back_to_main_for_commit_sha(dw, capsys):
+    sha = "a" * 40
+    assert dw.resolve_ref(sha) == "main"
+    assert "::warning::" in capsys.readouterr().out
+
+
+def test_resolve_ref_falls_back_to_main_for_uppercase_sha(dw, capsys):
+    sha = "A" * 40
+    assert dw.resolve_ref(sha) == "main"
+    assert "::warning::" in capsys.readouterr().out
+
+
+def test_resolve_ref_passes_through_branch_or_tag(dw, capsys):
+    assert dw.resolve_ref("main") == "main"
+    assert dw.resolve_ref("v1") == "v1"
+    assert dw.resolve_ref("feat/bootstrap-cache") == "feat/bootstrap-cache"
+    assert capsys.readouterr().out == ""
+
+
 def test_collect_step_lines_dedups_and_skips_unprintable(dw):
     seen = set()
     jobs = {"jobs": [{"id": 1, "steps": [

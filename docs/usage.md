@@ -131,6 +131,19 @@ functions:
     package: ./cron # zipped as-is, no build
 ```
 
+## Versioning
+
+The control repo publishes floating tags: `v1` moves on every minor and patch
+release, `v1.1` moves on every patch release, and `v1.1.1` (a full
+major.minor.patch tag) never moves. Pin whichever one matches how much churn
+you're willing to accept in your `uses:` line.
+
+Whatever tag you pin also pins the bootstrap: the caller's job dispatches the
+control repo's `bootstrap.yml` at that same ref, so pinning an immutable tag
+(`v1.1.1`) pins the bootstrap stack as well as the action. A fix to the
+bootstrap stack reaches you only when you move your pin to a tag (or `main`)
+that includes it.
+
 ## Caller-supplied Terraform
 
 For a resource the platform doesn't model, point `terraform:` at a directory of

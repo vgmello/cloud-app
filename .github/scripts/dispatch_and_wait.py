@@ -10,6 +10,7 @@ unit-tested. The network stages (`dispatch_run`, `wait_for_completion`,
 import io
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -17,6 +18,13 @@ import urllib.request
 import zipfile
 
 API = "https://api.github.com"
+
+# The workflow-dispatch API accepts a branch or tag only (HTTP 422 on a commit
+# SHA). A caller who pins this action at `@<sha>` previously fed `main`
+# through here (github.action_ref resolves to the tag/branch pin, not a SHA
+# pin); with control-ref falling back to github.action_ref, a SHA pin now
+# flows straight into TARGET_BRANCH, so it must be caught and swapped back.
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 
 # Give up polling after this many consecutive failures (~1 min at 10s each) so a
 # persistent 404 (wrong run id) or expired token does not loop until the job's
@@ -98,6 +106,17 @@ def status_line(status):
     if status == "queued":
         return "Status: queued (waiting for concurrent deployment lock)..."
     return f"Status: {status}..."
+
+
+def resolve_ref(value):
+    """The workflow-dispatch API takes a branch or tag, not a commit SHA. A
+    full 40-hex SHA (e.g. from a caller pinning this action at `@<sha>`) is
+    swapped for `main` with a warning; anything else passes through."""
+    if _SHA_RE.match(value):
+        print(f"::warning::TARGET_BRANCH '{value}' looks like a commit SHA, which the "
+              "workflow-dispatch API cannot accept (branch or tag only); using 'main' instead")
+        return "main"
+    return value
 
 
 def poll_error_action(code, failures, max_failures):
@@ -238,7 +257,7 @@ def main():
     owner = os.environ["TARGET_OWNER"]
     repo = os.environ["TARGET_REPO"]
     workflow_id = os.environ["TARGET_WORKFLOW"]
-    branch = os.environ.get("TARGET_BRANCH", "main")
+    branch = resolve_ref(os.environ.get("TARGET_BRANCH", "main"))
     headers = build_headers(os.environ["GH_TOKEN"])
 
     repo_api = f"{API}/repos/{owner}/{repo}"
