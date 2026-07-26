@@ -40,7 +40,7 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p "$FAKECLOUD_STATE"
-        jq -n --arg repository "$REPOSITORY" --arg ref "$REF" --arg path "$DEST" \
+        jq -c -n --arg repository "$REPOSITORY" --arg ref "$REF" --arg path "$DEST" \
           '{repository: $repository, ref: $ref, path: $path}' \
           >> "$FAKECLOUD_STATE/checkouts.jsonl"
 

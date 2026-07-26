@@ -2,28 +2,19 @@
 #
 # Deliberately NOT in .github/workflows: GitHub would schedule it, and it is
 # only ever meant to be driven by `gh act -W` from tests/e2e/test_cloud_app.py.
-# It stands in for the workflow an app team writes (see README.md), so the
-# action runs exactly as it does in production.
+# It stands in for the workflow an app team writes, so the action runs exactly
+# as it does in production.
+#
+# Scenario knobs arrive as E2E_* environment variables rather than
+# workflow_dispatch inputs, because the event type is itself under test: the
+# action forces both the bootstrap dispatch and the Terraform apply when
+# `github.event_name == 'workflow_dispatch'`, which would mask the cache-hit
+# and manifest-unchanged paths entirely. Driving this on `push` keeps those
+# reachable; `workflow_dispatch` is still declared so the force path can be
+# asserted on purpose.
 name: e2e-deploy
 
-on:
-  workflow_dispatch:
-    inputs:
-      env:
-        description: Target environment
-        default: dev
-      manifest:
-        description: Manifest path in the caller workspace
-        default: cloud-app.yml
-      plan_only:
-        default: "false"
-      always_run_terraform:
-        default: "false"
-      verify_deploy:
-        default: "true"
-      verify_timeout:
-        description: Kept short so a failing scenario surfaces in seconds
-        default: "20"
+on: [push, pull_request, workflow_dispatch]
 
 permissions:
   contents: read
@@ -41,12 +32,13 @@ jobs:
         id: deploy
         uses: ./.github/actions/cloud-app
         with:
-          env: ${{ inputs.env }}
-          manifest: ${{ inputs.manifest }}
-          plan_only: ${{ inputs.plan_only }}
-          always_run_terraform: ${{ inputs.always_run_terraform }}
-          verify_deploy: ${{ inputs.verify_deploy }}
-          verify_timeout: ${{ inputs.verify_timeout }}
+          env: ${{ env.E2E_ENV || 'dev' }}
+          manifest: ${{ env.E2E_MANIFEST || 'cloud-app.yml' }}
+          plan_only: ${{ env.E2E_PLAN_ONLY || 'false' }}
+          always_run_terraform: ${{ env.E2E_ALWAYS_RUN || 'false' }}
+          verify_deploy: ${{ env.E2E_VERIFY_DEPLOY || 'true' }}
+          # Kept short so a failing scenario surfaces in seconds.
+          verify_timeout: ${{ env.E2E_VERIFY_TIMEOUT || '20' }}
           app-id: "123456"
           app-private-key: "e2e-not-a-real-key"
           control-repo: cloud-app

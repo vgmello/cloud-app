@@ -4,22 +4,12 @@
 # through a dispatch: the caller-side scenarios already cover the dispatch
 # boundary via the fake GitHub API, and running act inside act to join the two
 # halves would add docker-in-docker for no extra coverage.
+#
+# Knobs arrive as E2E_* environment variables for the same reason as
+# deploy.yml -- see the note there.
 name: e2e-bootstrap
 
-on:
-  workflow_dispatch:
-    inputs:
-      caller_repo:
-        description: Caller repository name, under the same owner
-        default: orders-app
-      stack_name:
-        default: orders-api
-      environment:
-        default: dev
-      stack_file:
-        default: cloud-app.yml
-      plan_only:
-        default: "false"
+on: [push, workflow_dispatch]
 
 permissions:
   contents: write
@@ -37,11 +27,11 @@ jobs:
         id: bootstrap
         uses: ./.github/actions/deploy-stack
         with:
-          caller-repo: ${{ inputs.caller_repo }}
-          stack-name: ${{ inputs.stack_name }}
-          stack-file: ${{ inputs.stack_file }}
-          environment: ${{ inputs.environment }}
-          plan-only: ${{ inputs.plan_only }}
+          caller-repo: ${{ env.E2E_CALLER_REPO || 'orders-app' }}
+          stack-name: ${{ env.E2E_STACK_NAME || 'orders-api' }}
+          stack-file: ${{ env.E2E_STACK_FILE || 'cloud-app.yml' }}
+          environment: ${{ env.E2E_ENVIRONMENT || 'dev' }}
+          plan-only: ${{ env.E2E_PLAN_ONLY || 'false' }}
           github-token: e2e-fake-caller-token
 
       - name: Record step outcome

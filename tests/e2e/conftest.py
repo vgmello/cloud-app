@@ -15,6 +15,7 @@ them by hostname -- so do not run these tests with -n/xdist.
 
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -38,6 +39,11 @@ AZURITE_HOST_PORT = 10000
 FAKEGH_HOST_PORT = 18080
 
 ACT_TIMEOUT = 900
+
+# Run the job container natively. act nudges Apple silicon towards linux/amd64,
+# but emulating x86 makes every python invocation ~5x slower, and a composite
+# action makes a couple of dozen of them.
+CONTAINER_ARCH = "linux/arm64" if platform.machine() in ("arm64", "aarch64") else "linux/amd64"
 
 # Remote actions the composite actions call, mapped to the stub that replaces
 # them. Keyed by owner/repo; the pinned ref is read out of the action files so a
@@ -92,11 +98,17 @@ def docker_available():
 @pytest.fixture(scope="session", autouse=True)
 def images(docker_available):
     """Pull once per session. .actrc sets --pull=false so act never re-pulls."""
-    for image in (AZURITE_IMAGE, FAKEGH_IMAGE, ACT_IMAGE):
+    for image in (AZURITE_IMAGE, FAKEGH_IMAGE):
         if not _image_present(image):
             result = _docker("pull", image, check=False)
             if result.returncode != 0:
                 pytest.skip(f"could not pull {image}: {result.stderr.strip()[:200]}")
+    # The runner image must match CONTAINER_ARCH, and a cached image of the
+    # other architecture would satisfy `image inspect` while act still ran it
+    # emulated, so always ask for the right platform explicitly.
+    result = _docker("pull", "--platform", CONTAINER_ARCH, ACT_IMAGE, check=False)
+    if result.returncode != 0 and not _image_present(ACT_IMAGE):
+        pytest.skip(f"could not pull {ACT_IMAGE}: {result.stderr.strip()[:200]}")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -205,7 +217,7 @@ class Workspace:
 
     # -- driving --
 
-    def env_flags(self):
+    def env_flags(self, extra=None):
         """The environment the run needs, passed as `act --env`.
 
         It has to be --env, not workflow/job/step `env:`. act injects its own
@@ -224,15 +236,27 @@ class Workspace:
             # not, so this papers over an image difference, not a product bug.
             "PIP_BREAK_SYSTEM_PACKAGES": "1",
         }
+        env.update(extra or {})
         flags = []
         for key, value in env.items():
             flags += ["--env", f"{key}={value}"]
         return flags
 
-    def act(self, workflow, inputs=None, repository="orders-app", owner="vgmello",
-            event_name="workflow_dispatch", expect_success=None):
+    def act(self, workflow, options=None, repository="orders-app", owner="vgmello",
+            event_name="push", expect_success=None):
+        """Run a harness workflow.
+
+        `options` are the harness's E2E_* knobs, given without the prefix
+        ({"plan_only": "true"} -> E2E_PLAN_ONLY). They travel as environment
+        variables rather than workflow inputs because the event name is itself
+        under test -- see the note in tests/e2e/workflows/deploy.yml.
+
+        `push` is the default event for the same reason: on workflow_dispatch
+        the action forces both the bootstrap dispatch and the apply, which
+        hides the cache-hit and rotate lanes.
+        """
+        knobs = {f"E2E_{key.upper()}": str(value) for key, value in (options or {}).items()}
         event = {
-            "inputs": inputs or {},
             "ref": "refs/heads/main",
             "repository": {
                 "name": repository,
@@ -255,7 +279,8 @@ class Workspace:
             "-W", str(self.path / ".github" / "workflows" / f"e2e-{workflow}"),
             "--eventpath", str(self.path / "event.json"),
             "--network", NETWORK,
-            *self.env_flags(),
+            "--container-architecture", CONTAINER_ARCH,
+            *self.env_flags(knobs),
             *local_repos,
         ]
         self.last = _run(cmd, cwd=str(self.path), timeout=ACT_TIMEOUT)

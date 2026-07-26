@@ -39,7 +39,7 @@ runs:
       run: |
         echo "token=e2e-fake-installation-token" >> "$GITHUB_OUTPUT"
         mkdir -p "$FAKECLOUD_STATE"
-        jq -n \
+        jq -c -n \
           --arg owner "$OWNER" \
           --arg repositories "$REPOSITORIES" \
           --arg permission_actions "$PERMISSION_ACTIONS" \

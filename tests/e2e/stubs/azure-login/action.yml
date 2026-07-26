@@ -30,7 +30,7 @@ runs:
         SUBSCRIPTION_ID: ${{ inputs.subscription-id }}
       run: |
         mkdir -p "$FAKECLOUD_STATE"
-        jq -n \
+        jq -c -n \
           --arg client_id "$CLIENT_ID" \
           --arg tenant_id "$TENANT_ID" \
           --arg subscription_id "$SUBSCRIPTION_ID" \

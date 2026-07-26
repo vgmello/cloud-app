@@ -7,7 +7,14 @@
 # --container-daemon-socket - stops act bind-mounting the Docker socket, which
 # fails outright on colima ("operation not supported"). Nothing here needs a
 # real daemon: the e2e suite shims `docker`.
---container-architecture linux/amd64
+#
+# The container architecture is deliberately NOT pinned here. act warns on
+# Apple silicon and suggests linux/amd64, but that runs the whole job under
+# emulation -- a bare `python3 -c pass` goes from 0.16s to 0.90s, which across
+# a composite action's ~25 python invocations is the difference between a
+# one-minute scenario and a five-minute one. The e2e suite passes
+# --container-architecture matching the host; for manual runs on Apple silicon,
+# add `--container-architecture linux/arm64`.
 -P ubuntu-latest=catthehacker/ubuntu:act-latest
 --bind
 --container-daemon-socket -

@@ -16,8 +16,8 @@ STATE_CONTAINER = f"{STACK}-{ENV}"
 STATE_KEY = f"{STACK}/{ENV}.tfstate"
 
 # What the fake GitHub API hands back as the bootstrap result.
-PLAN_ID = "00000000-0000-0000-0000-0000000000p1"
-APPLY_ID = "00000000-0000-0000-0000-0000000000a1"
+PLAN_ID = "11111111-1111-1111-1111-111111111111"
+APPLY_ID = "22222222-2222-2222-2222-222222222222"
 
 
 def bootstrap_cache(fingerprint):
@@ -36,7 +36,7 @@ def test_first_deploy_creates_the_stack_and_its_state(workspace):
     """No state blob means first deploy: the action must bootstrap, apply the
     key vault before syncing secrets, run the full apply, and leave Terraform
     state behind."""
-    workspace.act("deploy.yml", {"env": ENV}, expect_success=True)
+    workspace.act("deploy.yml", expect_success=True)
 
     outputs = workspace.outputs()
     assert outputs["name"] == STACK
@@ -65,7 +65,7 @@ def test_first_deploy_creates_the_stack_and_its_state(workspace):
 
 def test_first_deploy_dispatches_the_bootstrap(workspace):
     """With no cache entry, phase 1 goes over the wire to the control repo."""
-    workspace.act("deploy.yml", {"env": ENV}, expect_success=True)
+    workspace.act("deploy.yml", expect_success=True)
 
     dispatches = workspace.dispatches()
     assert len(dispatches) == 1, dispatches
@@ -88,7 +88,7 @@ def test_cache_hit_skips_the_bootstrap_dispatch(workspace):
         f"registries/{ENV}/{STACK}.bootstrap.yml": bootstrap_cache(fingerprint),
     })
 
-    workspace.act("deploy.yml", {"env": ENV}, expect_success=True)
+    workspace.act("deploy.yml", expect_success=True)
 
     assert workspace.dispatches() == []
     assert workspace.outputs()["resource_group"] == RESOURCE_GROUP
@@ -100,7 +100,7 @@ def test_stale_cache_fingerprint_forces_a_dispatch(workspace):
         f"registries/{ENV}/{STACK}.bootstrap.yml": bootstrap_cache("stale-fingerprint"),
     })
 
-    workspace.act("deploy.yml", {"env": ENV}, expect_success=True)
+    workspace.act("deploy.yml", expect_success=True)
 
     assert len(workspace.dispatches()) == 1
 
@@ -125,7 +125,7 @@ def test_unchanged_manifest_rotates_instead_of_applying(workspace):
         "identities": {},
     })
 
-    workspace.act("deploy.yml", {"env": ENV}, expect_success=True)
+    workspace.act("deploy.yml", expect_success=True)
 
     outputs = workspace.outputs()
     assert outputs["manifest_changed"] == "false"
@@ -143,17 +143,35 @@ def test_always_run_terraform_overrides_the_rotate_lane(workspace):
     workspace.seed_state_blob(STATE_CONTAINER, STATE_KEY)
 
     workspace.act(
-        "deploy.yml", {"env": ENV, "always_run_terraform": "true"}, expect_success=True
+        "deploy.yml", {"always_run": "true"}, expect_success=True
     )
 
     assert workspace.outputs()["applied"] == "true"
     assert "apply@azure" in workspace.terraform_commands()
 
 
+@pytest.mark.workspace(commits=["cloud-app.yml", None])
+def test_manual_dispatch_forces_a_full_run(workspace):
+    """A manual dispatch is the documented escape hatch for rolling out a
+    platform-config change, so it must defeat both the bootstrap cache and the
+    manifest-unchanged skip."""
+    fingerprint = (workspace.path / "bootstrap.fingerprint").read_text().strip()
+    workspace.fakegh(contents={
+        f"registries/{ENV}/{STACK}.bootstrap.yml": bootstrap_cache(fingerprint),
+    })
+    workspace.seed_state_blob(STATE_CONTAINER, STATE_KEY)
+
+    workspace.act("deploy.yml", event_name="workflow_dispatch", expect_success=True)
+
+    assert workspace.outputs()["manifest_changed"] == "false"
+    assert workspace.outputs()["applied"] == "true"
+    assert len(workspace.dispatches()) == 1
+
+
 def test_plan_only_never_applies_or_writes_secrets(workspace):
     """A pull-request run must be read-only: plan identity, no apply, no secret
     sync, no image push."""
-    workspace.act("deploy.yml", {"env": ENV, "plan_only": "true"}, expect_success=True)
+    workspace.act("deploy.yml", {"plan_only": "true"}, expect_success=True)
 
     outputs = workspace.outputs()
     assert outputs["summary"] == f"plan only ({ENV})"
@@ -176,7 +194,7 @@ def test_caller_terraform_forces_an_apply_and_is_staged(workspace):
     manifest-unchanged skip -- otherwise a change there would never apply."""
     workspace.seed_state_blob(STATE_CONTAINER, STATE_KEY)
 
-    workspace.act("deploy.yml", {"env": ENV}, expect_success=True)
+    workspace.act("deploy.yml", expect_success=True)
 
     assert workspace.outputs()["manifest_changed"] == "false"
     assert workspace.outputs()["applied"] == "true"
@@ -192,7 +210,7 @@ def test_caller_terraform_forces_an_apply_and_is_staged(workspace):
 def test_code_functions_ship_a_zip_after_apply(workspace):
     """Code functions deploy through the SCM endpoint after Terraform, and the
     package must be non-empty for both the zip-mode and builder-mode paths."""
-    workspace.act("deploy.yml", {"env": ENV}, expect_success=True)
+    workspace.act("deploy.yml", expect_success=True)
 
     assert workspace.outputs()["code_functions"] == "true"
     assert "functionapp deployment source config-zip" in workspace.az_commands()
@@ -211,7 +229,7 @@ def test_verify_fails_a_crash_looping_revision(workspace):
         CONTAINER_APP: {"prov": "Provisioned", "running": "Failed"},
     })
 
-    workspace.act("deploy.yml", {"env": ENV, "verify_timeout": "5"}, expect_success=False)
+    workspace.act("deploy.yml", {"verify_timeout": "5"}, expect_success=False)
 
     assert CONTAINER_APP in workspace.log
     assert "runningState=Failed" in workspace.log
@@ -223,7 +241,7 @@ def test_verify_can_be_switched_off(workspace):
     })
 
     workspace.act(
-        "deploy.yml", {"env": ENV, "verify_deploy": "false"}, expect_success=True
+        "deploy.yml", {"verify_deploy": "false"}, expect_success=True
     )
 
     assert "containerapp revision show" not in workspace.az_commands()
