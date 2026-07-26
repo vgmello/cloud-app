@@ -11,15 +11,22 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 API = "https://api.github.com"
+
+
+def encode_path(path):
+    """Percent-encode each path segment, preserving the '/' separators. Kept
+    structural rather than relying on the caller's charset validation."""
+    return "/".join(quote(segment, safe="") for segment in path.split("/"))
 
 
 def main():
     dest = sys.argv[1]
     url = (
         f"{API}/repos/{os.environ['OWNER']}/{os.environ['CONTROL_REPO']}"
-        f"/contents/{os.environ['CACHE_PATH']}"
+        f"/contents/{encode_path(os.environ['CACHE_PATH'])}"
     )
     req = urllib.request.Request(
         url,
@@ -30,7 +37,7 @@ def main():
         },
     )
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
         body = base64.b64decode(payload.get("content", "")).decode("utf-8")
     except urllib.error.HTTPError as exc:

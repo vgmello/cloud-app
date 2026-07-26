@@ -166,8 +166,10 @@ runs:
         # the App's whole installation permission set into the caller's job —
         # the least-trusted context in this system. Dispatching has no narrower
         # scope than actions:write, so note that this token can also cancel or
-        # re-run workflows and delete artifacts/caches in the control repo; it
-        # cannot read code, secrets, or administer the repo.
+        # re-run workflows and delete artifacts/caches in the control repo.
+        # It also carries contents:read, needed for the bootstrap cache lookup
+        # (reading registries/<env>/<stack>.bootstrap.yml); it still cannot
+        # read secrets or administer the repo.
         permission-actions: write
         permission-contents: read
 
@@ -181,16 +183,19 @@ runs:
         OWNER: ${{ github.repository_owner }}
         CONTROL_REPO: ${{ inputs.control-repo }}
         CACHE_PATH: registries/${{ inputs.env }}/${{ steps.parse.outputs.name }}.bootstrap.yml
-      run: python "${{ github.action_path }}/../../scripts/fetch_bootstrap_cache.py" bootstrap-cache.yml
+        CACHE_FILE: ${{ runner.temp }}/bootstrap-cache.yml
+      run: python3 "${{ github.action_path }}/../../scripts/fetch_bootstrap_cache.py" "$CACHE_FILE"
 
     - name: Decide bootstrap
       id: cache
       shell: bash
+      env:
+        CACHE_FILE: ${{ runner.temp }}/bootstrap-cache.yml
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp bootstrap-cache
         --fingerprint-file "${{ github.action_path }}/../../../bootstrap.fingerprint"
-        --cache-file bootstrap-cache.yml
+        --cache-file "$CACHE_FILE"
 
     - name: Bootstrap dispatch (Phase 1)
       id: bootstrap
@@ -248,7 +253,11 @@ runs:
           echo "- **Stack Name:** \`$STACK_NAME\`"
           echo "- **Environment:** \`$DEPLOY_ENV\`"
           echo "- **Caller Branch:** \`$CALLER_BRANCH\`"
-          echo "- **[View Control Bootstrap Run]($TARGET_RUN_URL)**"
+          if [ -z "$TARGET_RUN_URL" ]; then
+            echo "- **Phase 1:** served from the cached bootstrap result (no dispatch)"
+          else
+            echo "- **[View Control Bootstrap Run]($TARGET_RUN_URL)**"
+          fi
         } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Read platform config
