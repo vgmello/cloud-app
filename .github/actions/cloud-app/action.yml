@@ -34,8 +34,12 @@ inputs:
     description: Control repo name that holds bootstrap.yml
     default: cloud-app
   control-ref:
-    description: Ref of the control repo to run bootstrap.yml from
-    default: main
+    description: >-
+      Ref of the control repo to run bootstrap.yml from. Defaults to the ref this
+      action was resolved at, so the bootstrap matches the action version the
+      caller pinned. Empty for a local (`./`) action reference, where it falls
+      back to main.
+    default: ""
   always_run_terraform:
     description: >-
       Force Terraform (plan + apply) to run on every invocation. When false
@@ -78,7 +82,7 @@ outputs:
     value: ${{ steps.gate.outputs.should_apply }}
   resource_group:
     description: Resource group created by the bootstrap
-    value: ${{ steps.bootstrap.outputs.resource_group }}
+    value: ${{ steps.phase1.outputs.resource_group }}
   summary:
     description: One-line terraform plan/apply summary
     value: ${{ steps.deploy.outputs.summary }}
@@ -165,16 +169,39 @@ runs:
         # re-run workflows and delete artifacts/caches in the control repo; it
         # cannot read code, secrets, or administer the repo.
         permission-actions: write
+        permission-contents: read
+
+    # The fingerprint ships inside this action's own tree, so it describes the
+    # bootstrap stack at the ref the caller pinned. The caller never computes it.
+    - name: Look up bootstrap cache
+      id: cachefetch
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.token.outputs.token }}
+        OWNER: ${{ github.repository_owner }}
+        CONTROL_REPO: ${{ inputs.control-repo }}
+        CACHE_PATH: registries/${{ inputs.env }}/${{ steps.parse.outputs.name }}.bootstrap.yml
+      run: python "${{ github.action_path }}/../../scripts/fetch_bootstrap_cache.py" bootstrap-cache.yml
+
+    - name: Decide bootstrap
+      id: cache
+      shell: bash
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp bootstrap-cache
+        --fingerprint-file "${{ github.action_path }}/../../../bootstrap.fingerprint"
+        --cache-file bootstrap-cache.yml
 
     - name: Bootstrap dispatch (Phase 1)
       id: bootstrap
+      if: ${{ steps.cache.outputs.use_cache != 'true' || github.event_name == 'workflow_dispatch' }}
       shell: bash
       env:
         GH_TOKEN: ${{ steps.token.outputs.token }}
         TARGET_OWNER: ${{ github.repository_owner }}
         TARGET_REPO: ${{ inputs.control-repo }}
         TARGET_WORKFLOW: bootstrap.yml
-        TARGET_BRANCH: ${{ inputs.control-ref }}
+        TARGET_BRANCH: ${{ inputs.control-ref || github.action_ref || 'main' }}
         INPUT_REPO: ${{ github.event.repository.name }}
         INPUT_MANIFEST: ${{ inputs.manifest }}
         INPUT_STACK_NAME: ${{ steps.parse.outputs.name }}
@@ -182,6 +209,27 @@ runs:
         INPUT_ENV: ${{ inputs.env }}
         INPUT_PLAN_ONLY: ${{ inputs.plan_only }}
       run: python "${{ github.action_path }}/../../scripts/dispatch_and_wait.py"
+
+    # One source of truth for the ids: the dispatch when it ran, the cache
+    # otherwise. Everything downstream reads this step, never either branch.
+    - name: Resolve bootstrap identities
+      id: phase1
+      shell: bash
+      env:
+        RG: ${{ steps.bootstrap.outputs.resource_group || steps.cache.outputs.resource_group }}
+        PLAN_ID: ${{ steps.bootstrap.outputs.plan_client_id || steps.cache.outputs.plan_client_id }}
+        APPLY_ID: ${{ steps.bootstrap.outputs.apply_client_id || steps.cache.outputs.apply_client_id }}
+      run: |
+        if [ -z "$RG" ] || [ -z "$PLAN_ID" ] || [ -z "$APPLY_ID" ]; then
+          echo "::error::bootstrap identities unresolved (resource_group='$RG'); the bootstrap dispatch did not return them"
+          exit 1
+        fi
+        {
+          echo "resource_group=$RG"
+          echo "plan_client_id=$PLAN_ID"
+          echo "apply_client_id=$APPLY_ID"
+        } >> "$GITHUB_OUTPUT"
+        echo "cloud-app: phase 1 via ${{ steps.bootstrap.outcome == 'skipped' && 'cache' || 'dispatch' }}"
 
     - name: Bootstrap dispatch summary
       if: always()
@@ -232,7 +280,7 @@ runs:
       if: ${{ steps.parse.outputs.docker == 'true' && inputs.plan_only == 'false' }}
       uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
       with:
-        client-id: ${{ steps.bootstrap.outputs.apply_client_id }}
+        client-id: ${{ steps.phase1.outputs.apply_client_id }}
         tenant-id: ${{ steps.platform.outputs.tenant_id }}
         subscription-id: ${{ steps.platform.outputs.subscription_id }}
 
@@ -256,7 +304,7 @@ runs:
     - name: Azure login (deploy)
       uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
       with:
-        client-id: ${{ inputs.plan_only == 'true' && steps.bootstrap.outputs.plan_client_id || steps.bootstrap.outputs.apply_client_id }}
+        client-id: ${{ inputs.plan_only == 'true' && steps.phase1.outputs.plan_client_id || steps.phase1.outputs.apply_client_id }}
         tenant-id: ${{ steps.platform.outputs.tenant_id }}
         subscription-id: ${{ steps.platform.outputs.subscription_id }}
 
@@ -410,7 +458,7 @@ runs:
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
         --image-tags "$IMAGE_TAGS"
-        --resource-group "${{ steps.bootstrap.outputs.resource_group }}"
+        --resource-group "${{ steps.phase1.outputs.resource_group }}"
 
     - name: Terraform deploy
       id: deploy
@@ -469,7 +517,7 @@ runs:
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
         --environment "$DEPLOY_ENV"
         --platform-file "${{ steps.platform.outputs.file }}"
-        --resource-group "${{ steps.bootstrap.outputs.resource_group }}"
+        --resource-group "${{ steps.phase1.outputs.resource_group }}"
         --timeout "$VERIFY_TIMEOUT"
 
     - name: Write summary
