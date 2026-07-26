@@ -1,0 +1,80 @@
+# Harness for the caller-side composite action.
+#
+# Deliberately NOT in .github/workflows: GitHub would schedule it, and it is
+# only ever meant to be driven by `gh act -W` from tests/e2e/test_cloud_app.py.
+# It stands in for the workflow an app team writes (see README.md), so the
+# action runs exactly as it does in production.
+name: e2e-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Target environment
+        default: dev
+      manifest:
+        description: Manifest path in the caller workspace
+        default: cloud-app.yml
+      plan_only:
+        default: "false"
+      always_run_terraform:
+        default: "false"
+      verify_deploy:
+        default: "true"
+      verify_timeout:
+        description: Kept short so a failing scenario surfaces in seconds
+        default: "20"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Put the fake cloud ahead of az/terraform/docker
+        shell: bash
+        run: echo "$GITHUB_WORKSPACE/tests/e2e/fakecloud/bin" >> "$GITHUB_PATH"
+
+      - name: Deploy
+        id: deploy
+        uses: ./.github/actions/cloud-app
+        with:
+          env: ${{ inputs.env }}
+          manifest: ${{ inputs.manifest }}
+          plan_only: ${{ inputs.plan_only }}
+          always_run_terraform: ${{ inputs.always_run_terraform }}
+          verify_deploy: ${{ inputs.verify_deploy }}
+          verify_timeout: ${{ inputs.verify_timeout }}
+          app-id: "123456"
+          app-private-key: "e2e-not-a-real-key"
+          control-repo: cloud-app
+          control-ref: main
+          app-secrets: |
+            STRIPE_KEY=sk_test_e2e
+            SENDGRID_API_KEY=sg_test_e2e
+
+      - name: Record action outputs
+        if: always()
+        shell: bash
+        env:
+          OUT_NAME: ${{ steps.deploy.outputs.name }}
+          OUT_CODE_FUNCTIONS: ${{ steps.deploy.outputs.code_functions }}
+          OUT_MANIFEST_CHANGED: ${{ steps.deploy.outputs.manifest_changed }}
+          OUT_APPLIED: ${{ steps.deploy.outputs.applied }}
+          OUT_RESOURCE_GROUP: ${{ steps.deploy.outputs.resource_group }}
+          OUT_SUMMARY: ${{ steps.deploy.outputs.summary }}
+          OUT_OUTCOME: ${{ steps.deploy.outcome }}
+        run: |
+          mkdir -p "$FAKECLOUD_STATE"
+          jq -n \
+            --arg name "$OUT_NAME" \
+            --arg code_functions "$OUT_CODE_FUNCTIONS" \
+            --arg manifest_changed "$OUT_MANIFEST_CHANGED" \
+            --arg applied "$OUT_APPLIED" \
+            --arg resource_group "$OUT_RESOURCE_GROUP" \
+            --arg summary "$OUT_SUMMARY" \
+            --arg outcome "$OUT_OUTCOME" \
+            '{name: $name, code_functions: $code_functions, manifest_changed: $manifest_changed, applied: $applied, resource_group: $resource_group, summary: $summary, outcome: $outcome}' \
+            > "$FAKECLOUD_STATE/action-outputs.json"

@@ -1,0 +1,79 @@
+name: checkout (e2e stub)
+description: >-
+  Stands in for actions/checkout. There is no GitHub to clone from, so this
+  materialises a workspace from a local fixture instead, using the map pytest
+  writes to $FAKECLOUD_STATE/checkout-map.json (keyed by the `path` input).
+
+  Each materialised workspace is a real git repository with a real local bare
+  remote. That matters: the control side pushes the stack lock and the
+  bootstrap cache back to origin, and `registry.persist_lock` fails closed if
+  any git step fails. Handing it a working remote is what makes those pushes a
+  genuine assertion instead of a swallowed warning.
+inputs:
+  repository:
+    description: recorded
+    required: false
+  ref:
+    description: recorded
+    required: false
+  token:
+    description: unused (no remote to authenticate against)
+    required: false
+  path:
+    description: Destination directory; empty means the workspace root (no-op)
+    required: false
+    default: ""
+  persist-credentials:
+    description: unused
+    required: false
+  fetch-depth:
+    description: unused
+    required: false
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        REF: ${{ inputs.ref }}
+        DEST: ${{ inputs.path }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$FAKECLOUD_STATE"
+        jq -n --arg repository "$REPOSITORY" --arg ref "$REF" --arg path "$DEST" \
+          '{repository: $repository, ref: $ref, path: $path}' \
+          >> "$FAKECLOUD_STATE/checkouts.jsonl"
+
+        if [ -z "$DEST" ]; then
+          echo "e2e checkout: workspace root already populated by act; nothing to do"
+          exit 0
+        fi
+
+        MAP="$FAKECLOUD_STATE/checkout-map.json"
+        SRC=$(jq -r --arg p "$DEST" '.[$p] // ""' "$MAP" 2>/dev/null || echo "")
+        if [ -z "$SRC" ]; then
+          echo "::error::e2e checkout: no fixture mapped for path '$DEST' in $MAP"
+          exit 1
+        fi
+
+        rm -rf "$DEST"
+        mkdir -p "$DEST"
+        # --exclude .git: the fixture's history is irrelevant, and a fresh repo
+        # with its own remote is what the lock/cache pushes need.
+        tar -C "$SRC" --exclude=.git -cf - . | tar -C "$DEST" -xf -
+
+        REMOTE="$FAKECLOUD_STATE/remotes/$(echo "$DEST" | tr '/' '_').git"
+        rm -rf "$REMOTE"
+        mkdir -p "$REMOTE"
+        git init --bare -q -b main "$REMOTE"
+
+        cd "$DEST"
+        git init -q -b main
+        git config user.name "e2e"
+        git config user.email "e2e@example.invalid"
+        git config commit.gpgsign false
+        git add -A
+        git commit -q -m "e2e fixture: $REPOSITORY@$REF"
+        git remote add origin "$REMOTE"
+        git push -q -u origin main
+        echo "e2e checkout: $REPOSITORY -> $DEST (origin $REMOTE)"

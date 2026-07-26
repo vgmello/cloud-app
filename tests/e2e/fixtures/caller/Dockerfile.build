@@ -1,0 +1,4 @@
+# Builder image for the code-function variant. A real builder writes its output
+# to /out; the docker shim does that on its behalf.
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+CMD ["cp", "-r", "/src/.", "/out/"]

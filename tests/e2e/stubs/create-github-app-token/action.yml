@@ -1,0 +1,48 @@
+name: create-github-app-token (e2e stub)
+description: >-
+  Stands in for actions/create-github-app-token. Emits a fixed token and
+  records the requested scopes, so a scenario can assert the action still asks
+  for least privilege (actions:write + contents:read on the control repo only).
+inputs:
+  app-id:
+    description: unused
+    required: false
+  private-key:
+    description: unused
+    required: false
+  owner:
+    description: recorded
+    required: false
+  repositories:
+    description: recorded
+    required: false
+  permission-actions:
+    description: recorded
+    required: false
+  permission-contents:
+    description: recorded
+    required: false
+outputs:
+  token:
+    description: A fixed token the fake GitHub API accepts unconditionally
+    value: ${{ steps.emit.outputs.token }}
+runs:
+  using: composite
+  steps:
+    - id: emit
+      shell: bash
+      env:
+        OWNER: ${{ inputs.owner }}
+        REPOSITORIES: ${{ inputs.repositories }}
+        PERMISSION_ACTIONS: ${{ inputs.permission-actions }}
+        PERMISSION_CONTENTS: ${{ inputs.permission-contents }}
+      run: |
+        echo "token=e2e-fake-installation-token" >> "$GITHUB_OUTPUT"
+        mkdir -p "$FAKECLOUD_STATE"
+        jq -n \
+          --arg owner "$OWNER" \
+          --arg repositories "$REPOSITORIES" \
+          --arg permission_actions "$PERMISSION_ACTIONS" \
+          --arg permission_contents "$PERMISSION_CONTENTS" \
+          '{owner: $owner, repositories: $repositories, permission_actions: $permission_actions, permission_contents: $permission_contents}' \
+          >> "$FAKECLOUD_STATE/app-token-requests.jsonl"

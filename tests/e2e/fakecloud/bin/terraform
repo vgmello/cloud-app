@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""Stand-in for Terraform.
+
+This is a behavioural double, not an emulator. It exists to prove the composite
+actions drive Terraform correctly -- right backend config, right variables,
+right order, right handling of the output -- not to prove Terraform works.
+Module behaviour stays covered by `terraform test` against mocked providers.
+
+What is real: the state blob. `init` creates the container in Azurite and
+`apply` writes the blob, so `cloudapp state-exists` on a later run performs a
+genuine lookup against genuine storage. That is what makes the first-deploy to
+routine-deploy transition a real signal rather than a seeded fixture.
+"""
+
+import hashlib
+import json
+import sys
+import uuid
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from fakecloud import blob, graph, naming  # noqa: E402
+
+BOOLEANS = ("-no-color", "-json", "-recursive", "-check", "-upgrade", "-reconfigure")
+MULTI = ("-backend-config", "-var", "-target")
+
+PLAN_FILE = "tfplan"
+
+
+def fail(message, code=1):
+    print(message, file=sys.stderr)
+    sys.exit(code)
+
+
+def _init_store():
+    path = graph.state_dir() / "terraform-init.json"
+    return path, (json.loads(path.read_text()) if path.exists() else {})
+
+
+def _backend_for(chdir):
+    _, store = _init_store()
+    config = store.get(str(chdir))
+    if config is None:
+        fail(f"fakecloud terraform: no init recorded for {chdir}; init must run first")
+    return config
+
+
+def _client_id(*parts):
+    """Deterministic client id, so assertions can predict the bootstrap output."""
+    digest = hashlib.sha256("/".join(parts).encode()).digest()
+    return str(uuid.UUID(bytes=digest[:16]))
+
+
+def _load_vars(flags):
+    path = flags.get("-var-file")
+    if not path:
+        fail("fakecloud terraform: -var-file is required")
+    return json.loads(Path(path).read_text())
+
+
+def _named_vars(flags):
+    """`-var key=value` pairs. image_tags and runner_ip arrive this way."""
+    result = {}
+    for entry in flags.get("-var", []):
+        if entry is True or "=" not in entry:
+            continue
+        key, value = entry.split("=", 1)
+        result[key] = value
+    return result
+
+
+def is_bootstrap(chdir):
+    return Path(chdir).name == "bootstrap"
+
+
+# --- init ---
+
+def do_init(chdir, flags):
+    entries = [e for e in flags.get("-backend-config", []) if e is not True]
+    config = {}
+    for entry in entries:
+        key, _, value = entry.partition("=")
+        config[key] = value
+    if not config:
+        fail("fakecloud terraform: init received no -backend-config")
+
+    container = config.get("container_name")
+    if not container:
+        fail(f"fakecloud terraform: init backend config has no container_name: {config}")
+    blob.create_container(container)
+
+    path, store = _init_store()
+    store[str(chdir)] = config
+    path.write_text(json.dumps(store, indent=2, sort_keys=True) + "\n")
+
+    print("Terraform has been successfully initialized!")
+    return 0
+
+
+# --- plan ---
+
+def _plan_main(tfvars, named, targets):
+    config = tfvars["config"]
+    names = naming.resource_names(config)
+    image_tags = json.loads(named.get("image_tags", "{}"))
+    targeted = bool(targets)
+
+    resources = {
+        "resource_group": names["resource_group"],
+        "keyvault": names["keyvault"],
+        "containerapps": {} if targeted else names["apps"],
+        "functionapps": {} if targeted else names["functions"],
+        "names": names,
+        "image_tags": image_tags,
+        "runner_ip": named.get("runner_ip"),
+        "targets": targets,
+    }
+    return resources
+
+
+def _plan_bootstrap(tfvars):
+    name, env = tfvars["name"], tfvars["environment"]
+    return {
+        "resource_group": f"rg-{name}-{env}",
+        "identities": {
+            "plan": _client_id(name, env, "plan"),
+            "apply": _client_id(name, env, "apply"),
+        },
+        "stack_state_container": tfvars.get("stack_state_container", ""),
+        "plan_subjects": tfvars.get("plan_subjects", []),
+        "apply_subjects": tfvars.get("apply_subjects", []),
+    }
+
+
+def _plan_text(plan, chdir):
+    lines = ["Terraform used the selected providers to generate the following execution plan.", ""]
+    if is_bootstrap(chdir):
+        lines.append(f"  # azurerm_resource_group.this will be created ({plan['resource_group']})")
+        for role, client_id in plan["identities"].items():
+            lines.append(f"  # azurerm_user_assigned_identity.{role} will be created ({client_id})")
+        created = 1 + len(plan["identities"])
+    else:
+        lines.append(f"  # azurerm_resource_group.this will be created ({plan['resource_group']})")
+        lines.append(f"  # module.keyvault will be created ({plan['keyvault']})")
+        for key, name in plan["containerapps"].items():
+            lines.append(f"  # module.container_app[\"{key}\"] will be created ({name})")
+        for key, name in plan["functionapps"].items():
+            lines.append(f"  # module.function[\"{key}\"] will be created ({name})")
+        created = 2 + len(plan["containerapps"]) + len(plan["functionapps"])
+        if plan["targets"]:
+            lines.append("")
+            lines.append(f"Targeting: {', '.join(plan['targets'])}")
+    lines += ["", f"Plan: {created} to add, 0 to change, 0 to destroy."]
+    return "\n".join(lines)
+
+
+def do_plan(chdir, flags):
+    tfvars = _load_vars(flags)
+    named = _named_vars(flags)
+    targets = [t for t in flags.get("-target", []) if t is not True]
+
+    plan = _plan_bootstrap(tfvars) if is_bootstrap(chdir) else _plan_main(tfvars, named, targets)
+    plan["text"] = _plan_text(plan, chdir)
+    plan["stack"] = "bootstrap" if is_bootstrap(chdir) else "main"
+
+    out = flags.get("-out") or PLAN_FILE
+    (Path(chdir) / out).write_text(json.dumps(plan, indent=2) + "\n")
+    print(plan["text"])
+    return 0
+
+
+def do_show(chdir, positional):
+    name = positional[0] if positional else PLAN_FILE
+    path = Path(chdir) / name
+    if not path.exists():
+        fail(f"fakecloud terraform: no plan file at {path}")
+    print(json.loads(path.read_text())["text"])
+    return 0
+
+
+# --- apply ---
+
+def _apply_main(plan, state):
+    state["resource_groups"][plan["resource_group"]] = {"location": "eastus2"}
+    state["keyvaults"].setdefault(plan["keyvault"], {"secrets": {}, "network_rules": []})
+    for key, name in plan["containerapps"].items():
+        entry = state["containerapps"].setdefault(name, {})
+        entry.setdefault("revision_count", 1)
+        entry["latestRevisionName"] = f"{name}--r{entry['revision_count']}"
+        entry.setdefault("prov", "Provisioned")
+        entry.setdefault("running", "Running")
+        containers = entry.setdefault("containers", {})
+        for tag_key, image in plan["image_tags"].items():
+            if tag_key.startswith(f"{key}/"):
+                containers[tag_key.split("/", 1)[1]] = image
+    for key, name in plan["functionapps"].items():
+        entry = state["functionapps"].setdefault(name, {})
+        entry.setdefault("state", "Running")
+        if key in plan["image_tags"]:
+            entry["image"] = plan["image_tags"][key]
+
+
+def _apply_bootstrap(plan, state):
+    state["resource_groups"][plan["resource_group"]] = {"location": "eastus2"}
+    for role, client_id in plan["identities"].items():
+        state["identities"][f"id-{plan['resource_group'][3:]}-{role}"] = {
+            "client_id": client_id,
+            "role": role,
+        }
+    if plan["stack_state_container"]:
+        blob.create_container(plan["stack_state_container"])
+
+
+def do_apply(chdir, positional):
+    name = positional[0] if positional else PLAN_FILE
+    path = Path(chdir) / name
+    if not path.exists():
+        fail(f"fakecloud terraform: no plan file at {path}")
+    plan = json.loads(path.read_text())
+
+    if graph.scenario().get("apply_transient_authz_once") and graph.bump("apply_authz") == 1:
+        # Wording matters: tfdeploy._is_transient_authz decides on these markers
+        # and only retries when it matches.
+        print("Error: authorization failed")
+        fail(
+            "Error: creating resource: AuthorizationFailed: The client does not have "
+            "authorization to perform action over scope (RBAC propagation)."
+        )
+
+    state = graph.load()
+    if plan["stack"] == "bootstrap":
+        _apply_bootstrap(plan, state)
+    else:
+        _apply_main(plan, state)
+    graph.save(state)
+
+    backend = _backend_for(chdir)
+    blob.put_blob(
+        backend["container_name"], backend["key"],
+        json.dumps({"version": 4, "serial": 1, "plan": plan}, indent=2),
+    )
+
+    print("Apply complete! Resources: added, 0 changed, 0 destroyed.")
+    return 0
+
+
+# --- output ---
+
+def _plan_from_state(chdir):
+    """Recover the last applied plan from the state blob.
+
+    Needed on the rotate lane: Terraform is skipped there, so there is no local
+    plan file, but `deploy-functions` still re-inits and reads `output names`
+    to learn the function app names -- exactly as it would read them from real
+    remote state.
+    """
+    backend = _backend_for(chdir)
+    body = blob.get_blob(backend["container_name"], backend["key"])
+    if body is None:
+        return None
+    return json.loads(body).get("plan")
+
+
+def _outputs(chdir):
+    path = Path(chdir) / PLAN_FILE
+    plan = json.loads(path.read_text()) if path.exists() else _plan_from_state(chdir)
+    if plan is None:
+        return {}
+    if plan["stack"] == "bootstrap":
+        return {
+            "resource_group_name": plan["resource_group"],
+            "plan_identity_client_id": plan["identities"]["plan"],
+            "apply_identity_client_id": plan["identities"]["apply"],
+        }
+    return {"names": plan["names"]}
+
+
+def do_output(chdir, positional):
+    outputs = _outputs(chdir)
+    if positional:
+        name = positional[0]
+        if name not in outputs:
+            fail(f"fakecloud terraform: no output named {name}")
+        print(json.dumps(outputs[name]))
+        return 0
+    print(json.dumps({k: {"value": v} for k, v in outputs.items()}))
+    return 0
+
+
+def main(argv):
+    chdir = "."
+    rest = list(argv)
+    if rest and rest[0].startswith("-chdir="):
+        chdir = rest.pop(0).split("=", 1)[1]
+
+    command, flags, positional = graph.parse_args(rest, booleans=BOOLEANS, multi=MULTI)
+    graph.record(
+        "terraform-calls.jsonl",
+        {"argv": argv, "chdir": chdir, "command": command, "flags": flags},
+    )
+    action = command[0] if command else ""
+
+    if action == "init":
+        return do_init(chdir, flags)
+    if action == "plan":
+        return do_plan(chdir, flags)
+    if action == "show":
+        return do_show(chdir, positional)
+    if action == "apply":
+        return do_apply(chdir, positional)
+    if action == "output":
+        return do_output(chdir, positional)
+    if action in ("fmt", "validate", "version"):
+        return 0
+
+    fail(f"fakecloud terraform: unhandled command '{action}'", 64)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

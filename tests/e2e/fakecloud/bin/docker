@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Stand-in for the Docker CLI.
+
+Records build/tag/push so assertions can check the image tag scheme and the
+push order, and satisfies the function builder contract (`docker run -v
+<dir>:/out <image>` must leave build output behind, or the zip that ships to
+`config-zip` would be empty).
+
+No registry is involved. Colima's daemon cannot be given an insecure-registry
+entry from inside a test, and serving TLS for a fake ACR is more machinery than
+the coverage would justify. If image-layer fidelity ever matters, the upgrade
+is a `registry:2` service on the e2e network -- see CLAUDE.md.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from fakecloud import graph  # noqa: E402
+
+BOOLEANS = ("--rm", "-d", "--pull", "-q", "--quiet")
+
+
+def do_build(flags, positional):
+    dockerfile = Path(flags.get("-f", "./Dockerfile"))
+    if not dockerfile.exists():
+        print(f"fakecloud docker: no such Dockerfile: {dockerfile}", file=sys.stderr)
+        return 1
+    context = positional[0] if positional else "."
+    if not Path(context).is_dir():
+        print(f"fakecloud docker: build context is not a directory: {context}", file=sys.stderr)
+        return 1
+    print(f"Successfully tagged {flags.get('-t', '<untagged>')}")
+    return 0
+
+
+def do_run(flags, positional):
+    """Function builder: write a marker into the mounted /out so the packaged
+    zip has content, mirroring a builder that produced artifacts."""
+    mount = flags.get("-v") or flags.get("--volume")
+    image = positional[0] if positional else "<none>"
+    if isinstance(mount, str) and ":" in mount:
+        host_dir = Path(mount.rsplit(":", 1)[0])
+        host_dir.mkdir(parents=True, exist_ok=True)
+        (host_dir / "function.dll").write_text(f"built by {image}\n")
+        (host_dir / "host.json").write_text("{}\n")
+    return 0
+
+
+def main(argv):
+    command, flags, positional = graph.parse_args(argv, booleans=BOOLEANS)
+    graph.record(
+        "docker-calls.jsonl",
+        {"argv": argv, "command": command, "flags": flags, "positional": positional},
+    )
+    action = command[0] if command else ""
+
+    if action == "build":
+        return do_build(flags, positional)
+    if action == "run":
+        return do_run(flags, positional)
+    if action in ("tag", "push", "pull", "login", "logout"):
+        return 0
+    if action == "version":
+        print("fakecloud docker")
+        return 0
+
+    print(f"fakecloud docker: unhandled command '{action}'", file=sys.stderr)
+    return 64
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

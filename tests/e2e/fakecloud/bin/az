@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""Stand-in for the Azure CLI.
+
+`storage blob` is answered by a real Azurite. Everything else is answered from
+the JSON resource graph, because Container Apps, Key Vault, and Function Apps
+have no emulator.
+
+The set of `az` invocations the engine makes is closed and small (see
+`grep -rn '"az"' engine/cloudapp`). Anything outside that set exits 64 rather
+than succeeding quietly, so an engine change that adds a call is a loud e2e
+failure instead of an untested path.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from fakecloud import blob, graph  # noqa: E402
+
+NOT_FOUND_EXIT = 3
+UNHANDLED_EXIT = 64
+
+
+def fail(message, code=1):
+    print(message, file=sys.stderr)
+    sys.exit(code)
+
+
+def not_found(kind, name):
+    # verify.NOT_FOUND and secrets.NOT_FOUND both match on this wording.
+    fail(
+        f"(ResourceNotFound) The Resource '{kind}/{name}' was not found.",
+        NOT_FOUND_EXIT,
+    )
+
+
+def handle_storage(command, flags):
+    if command[:3] != ["storage", "blob", "exists"]:
+        return None
+    container = flags["--container-name"]
+    name = flags["--name"]
+    exists = blob.blob_exists(container, name)
+    print("true" if exists else "false")
+    return 0
+
+
+def handle_keyvault(command, flags, state):
+    vaults = state["keyvaults"]
+    tail = command[1:]
+
+    if tail == ["show"]:
+        name = flags["--name"]
+        if name not in vaults:
+            not_found("Microsoft.KeyVault/vaults", name)
+        print(json.dumps({"name": name, "properties": {"provisioningState": "Succeeded"}}))
+        return 0
+
+    if tail == ["network-rule", "add"]:
+        vault = vaults.get(flags["--name"])
+        if vault is None:
+            not_found("Microsoft.KeyVault/vaults", flags["--name"])
+        vault.setdefault("network_rules", []).append(flags["--ip-address"])
+        return 0
+
+    if tail == ["secret", "show"]:
+        vault = vaults.get(flags["--vault-name"])
+        if vault is None:
+            not_found("Microsoft.KeyVault/vaults", flags["--vault-name"])
+        secret = vault.get("secrets", {}).get(flags["--name"])
+        if secret is None:
+            not_found("Microsoft.KeyVault/secrets", flags["--name"])
+        print(secret)
+        return 0
+
+    if tail == ["secret", "set"]:
+        name = flags["--name"]
+        if name in (graph.scenario().get("secret_set_fail_once") or []):
+            if graph.bump(f"secret_set:{name}") == 1:
+                fail(f"(Forbidden) Caller is not authorized to perform action on resource {name}.")
+        vault = vaults.get(flags["--vault-name"])
+        if vault is None:
+            not_found("Microsoft.KeyVault/vaults", flags["--vault-name"])
+        vault.setdefault("secrets", {})[name] = flags["--value"]
+        return 0
+
+    return None
+
+
+def _revision_state(state, name):
+    override = (graph.scenario().get("revision_state") or {}).get(name)
+    if override:
+        return override
+    app = state["containerapps"][name]
+    return {"prov": app.get("prov", "Provisioned"), "running": app.get("running", "Running")}
+
+
+def handle_containerapp(command, flags, state):
+    apps = state["containerapps"]
+    tail = command[1:]
+    name = flags.get("--name") or flags.get("-n")
+
+    if tail == ["show"]:
+        if name not in apps:
+            not_found("Microsoft.App/containerApps", name)
+        print(apps[name].get("latestRevisionName", ""))
+        return 0
+
+    if tail == ["revision", "show"]:
+        if name not in apps:
+            not_found("Microsoft.App/containerApps", name)
+        print(json.dumps(_revision_state(state, name)))
+        return 0
+
+    if tail == ["update"]:
+        if name not in apps:
+            not_found("Microsoft.App/containerApps", name)
+        containers = apps[name].setdefault("containers", {})
+        containers[flags["--container-name"]] = flags["--image"]
+        # A new image means a new revision, exactly as the real service behaves.
+        revision = apps[name].get("revision_count", 1) + 1
+        apps[name]["revision_count"] = revision
+        apps[name]["latestRevisionName"] = f"{name}--r{revision}"
+        return 0
+
+    return None
+
+
+def handle_functionapp(command, flags, state):
+    functions = state["functionapps"]
+    tail = command[1:]
+    name = flags.get("--name") or flags.get("-n")
+
+    if tail == ["show"]:
+        if name not in functions:
+            not_found("Microsoft.Web/sites", name)
+        override = (graph.scenario().get("functionapp_state") or {}).get(name)
+        print(override or functions[name].get("state", "Running"))
+        return 0
+
+    if tail == ["config", "container", "set"]:
+        if name not in functions:
+            not_found("Microsoft.Web/sites", name)
+        functions[name]["image"] = flags["--image"]
+        return 0
+
+    if tail == ["deployment", "source", "config-zip"]:
+        if name not in functions:
+            not_found("Microsoft.Web/sites", name)
+        source = Path(flags["--src"])
+        functions[name]["package"] = {
+            "src": str(source),
+            "bytes": source.stat().st_size if source.exists() else 0,
+        }
+        return 0
+
+    return None
+
+
+def main(argv):
+    command, flags, positional = graph.parse_args(argv)
+    graph.record("az-calls.jsonl", {"argv": argv, "command": command, "flags": flags})
+
+    # Credential plumbing: the fake cloud has no auth, so these are no-ops.
+    if command[:1] in (["login"], ["logout"]) or command[:2] in (
+        ["account", "set"], ["acr", "login"], ["account", "show"],
+    ):
+        return 0
+
+    if command[:1] == ["storage"]:
+        result = handle_storage(command, flags)
+        if result is not None:
+            return result
+
+    state = graph.load()
+    handler = {
+        "keyvault": handle_keyvault,
+        "containerapp": handle_containerapp,
+        "functionapp": handle_functionapp,
+    }.get(command[0] if command else "")
+
+    if handler:
+        result = handler(command, flags, state)
+        if result is not None:
+            graph.save(state)
+            return result
+
+    fail(
+        f"fakecloud az: unhandled command {' '.join(command) or '(none)'} "
+        f"(positional={positional}). Add it to tests/e2e/fakecloud/bin/az.",
+        UNHANDLED_EXIT,
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

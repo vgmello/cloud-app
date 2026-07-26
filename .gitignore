@@ -23,3 +23,15 @@ terraform/azure/custom/*
 
 # Brainstorming visual companion sessions
 .superpowers/
+
+# Workflow e2e (tests/e2e): act bind-mounts the repo, so the fake cloud's
+# resource graph, call logs, and the artefacts the composite actions produce in
+# the workspace all land here.
+tests/e2e/state/
+.cloud-app/
+tfvars.json
+tfplan
+bootstrap-tfvars.json
+
+# Scratch workspaces act runs against
+tests/e2e/.work/

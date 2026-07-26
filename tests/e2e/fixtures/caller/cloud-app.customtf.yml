@@ -1,0 +1,21 @@
+# Variant exercising caller-supplied Terraform. `terraform:` is what forces the
+# apply gate open even on an unchanged manifest -- caller .tf files cannot be
+# diffed the way the manifest can, so the action must never skip.
+name: orders-api
+
+apps:
+  api:
+    port: 8080
+    ingress: internal
+    replicas: { min: 1, max: 3 }
+    docker:
+      file: ./Dockerfile
+      context: .
+
+terraform:
+  dir: ./tf-custom
+  providers:
+    - { name: random, source: hashicorp/random, version: "~> 3" }
+
+environments:
+  dev: {}

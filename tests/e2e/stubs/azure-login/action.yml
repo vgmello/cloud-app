@@ -1,0 +1,39 @@
+name: azure/login (e2e stub)
+description: >-
+  Stands in for azure/login. The fake cloud has no auth, so there is nothing to
+  log into -- but which identity the action chose matters, so every login is
+  recorded. That is how the plan-only scenario proves the deploy ran under the
+  Reader-scoped plan identity rather than the apply identity.
+inputs:
+  client-id:
+    description: recorded
+    required: false
+  tenant-id:
+    description: recorded
+    required: false
+  subscription-id:
+    description: recorded
+    required: false
+  audience:
+    description: unused
+    required: false
+  allow-no-subscriptions:
+    description: unused
+    required: false
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        CLIENT_ID: ${{ inputs.client-id }}
+        TENANT_ID: ${{ inputs.tenant-id }}
+        SUBSCRIPTION_ID: ${{ inputs.subscription-id }}
+      run: |
+        mkdir -p "$FAKECLOUD_STATE"
+        jq -n \
+          --arg client_id "$CLIENT_ID" \
+          --arg tenant_id "$TENANT_ID" \
+          --arg subscription_id "$SUBSCRIPTION_ID" \
+          '{client_id: $client_id, tenant_id: $tenant_id, subscription_id: $subscription_id}' \
+          >> "$FAKECLOUD_STATE/azure-logins.jsonl"
+        echo "e2e: azure login as $CLIENT_ID"

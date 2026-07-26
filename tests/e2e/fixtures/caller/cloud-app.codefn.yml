@@ -1,0 +1,28 @@
+# Variant exercising code (non-container) functions. `runtime:` switches a
+# functions entry from container deploy to code deploy, so the artefact ships
+# via `az functionapp deployment source config-zip` after apply rather than as
+# an image.
+#
+# `cron` packages a directory as-is; `worker` runs a builder image that writes
+# to /out. Both paths are covered because they take different branches in
+# funcpackage.
+name: orders-api
+
+apps:
+  api:
+    port: 8080
+    ingress: internal
+    docker:
+      file: ./Dockerfile
+      context: .
+
+functions:
+  cron:
+    runtime: python:3.11
+    package: ./cron
+  worker:
+    runtime: dotnet-isolated:8.0
+    docker: { file: ./Dockerfile.build }
+
+environments:
+  dev: {}

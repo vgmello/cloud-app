@@ -1,0 +1,15 @@
+# Defaults for nektos/act (installed here as `gh act`).
+#
+# --bind is what makes the e2e suite work: the container sees the workspace at
+# the same absolute path as the host, so whatever the fake cloud writes inside
+# is readable by pytest outside, with no artifact plumbing.
+#
+# --container-daemon-socket - stops act bind-mounting the Docker socket, which
+# fails outright on colima ("operation not supported"). Nothing here needs a
+# real daemon: the e2e suite shims `docker`.
+--container-architecture linux/amd64
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+--bind
+--container-daemon-socket -
+--pull=false
+--action-offline-mode

@@ -1,0 +1,27 @@
+# Baseline caller manifest for the e2e suite: one container app with secrets
+# and a database. Deliberately close to samples/caller-app/cloud-app.yml, minus
+# the custom Terraform and code functions, which get their own variants.
+name: orders-api
+
+apps:
+  api:
+    port: 8080
+    ingress: internal
+    replicas: { min: 1, max: 3 }
+    docker:
+      file: ./Dockerfile
+      context: .
+    secrets:
+      - STRIPE_KEY
+      - SENDGRID_API_KEY
+
+database:
+  size: small
+  public_access: false
+
+environments:
+  dev: {}
+  prod:
+    apps:
+      api:
+        replicas: { min: 2, max: 10 }

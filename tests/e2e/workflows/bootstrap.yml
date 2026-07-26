@@ -1,0 +1,55 @@
+# Harness for the control-side composite action (Phase 1).
+#
+# Stands in for .github/workflows/bootstrap.yml, driven directly rather than
+# through a dispatch: the caller-side scenarios already cover the dispatch
+# boundary via the fake GitHub API, and running act inside act to join the two
+# halves would add docker-in-docker for no extra coverage.
+name: e2e-bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      caller_repo:
+        description: Caller repository name, under the same owner
+        default: orders-app
+      stack_name:
+        default: orders-api
+      environment:
+        default: dev
+      stack_file:
+        default: cloud-app.yml
+      plan_only:
+        default: "false"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Put the fake cloud ahead of az/terraform/docker
+        shell: bash
+        run: echo "$GITHUB_WORKSPACE/tests/e2e/fakecloud/bin" >> "$GITHUB_PATH"
+
+      - name: Bootstrap
+        id: bootstrap
+        uses: ./.github/actions/deploy-stack
+        with:
+          caller-repo: ${{ inputs.caller_repo }}
+          stack-name: ${{ inputs.stack_name }}
+          stack-file: ${{ inputs.stack_file }}
+          environment: ${{ inputs.environment }}
+          plan-only: ${{ inputs.plan_only }}
+          github-token: e2e-fake-caller-token
+
+      - name: Record step outcome
+        if: always()
+        shell: bash
+        env:
+          OUT_OUTCOME: ${{ steps.bootstrap.outcome }}
+        run: |
+          mkdir -p "$FAKECLOUD_STATE"
+          jq -n --arg outcome "$OUT_OUTCOME" '{outcome: $outcome}' \
+            > "$FAKECLOUD_STATE/action-outputs.json"
