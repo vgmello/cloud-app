@@ -523,3 +523,26 @@ def test_bootstrap_cache_cli_misses_on_malformed_cache(tmp_path, monkeypatch):
     ])
 
     assert "use_cache=false" in out_file.read_text()
+
+
+def test_bootstrap_cache_cli_misses_on_unreadable_fingerprint(tmp_path, monkeypatch):
+    """exists() is true for a directory; an unreadable fingerprint must miss,
+    not crash the deploy."""
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "adir").mkdir()
+    (tmp_path / "cache.yml").write_text(
+        "resource_group: rg\nplan_client_id: 1\napply_client_id: 2\n"
+        "fingerprint: sha256:abc\n"
+    )
+
+    rc = cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "adir"),
+        "--cache-file", str(tmp_path / "cache.yml"),
+    ])
+
+    assert rc == 0
+    assert "use_cache=false" in out_file.read_text()

@@ -234,7 +234,14 @@ def cmd_bootstrap_fingerprint(args):
 
 
 def cmd_bootstrap_cache(args):
-    local = Path(args.fingerprint_file).read_text().strip() if Path(args.fingerprint_file).exists() else ""
+    # Any unreadable fingerprint is a miss, never a failure: exists() is true for
+    # a directory and for a permission-denied file, and this command must always
+    # fall back to "dispatch" rather than break the deploy.
+    try:
+        local = Path(args.fingerprint_file).read_text().strip()
+    except OSError as exc:
+        gha.warning(f"ignoring unreadable bootstrap fingerprint: {exc}")
+        local = ""
     cache = None
     cache_path = Path(args.cache_file)
     if cache_path.exists():
