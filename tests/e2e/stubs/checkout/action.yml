@@ -60,7 +60,18 @@ runs:
         mkdir -p "$DEST"
         # --exclude .git: the fixture's history is irrelevant, and a fresh repo
         # with its own remote is what the lock/cache pushes need.
-        tar -C "$SRC" --exclude=.git -cf - . | tar -C "$DEST" -xf -
+        #
+        # The central fixture is the workspace itself, so the destination sits
+        # inside the source. Without excluding the checkout destinations and the
+        # scratch/state directories, each run copies the previous run's copy and
+        # the tree grows without bound.
+        tar -C "$SRC" \
+          --exclude=.git \
+          --exclude=./central-workspace \
+          --exclude=./caller-workspace \
+          --exclude=./tests/e2e/.work \
+          --exclude=./tests/e2e/state \
+          -cf - . | tar -C "$DEST" -xf -
 
         REMOTE="$FAKECLOUD_STATE/remotes/$(echo "$DEST" | tr '/' '_').git"
         rm -rf "$REMOTE"

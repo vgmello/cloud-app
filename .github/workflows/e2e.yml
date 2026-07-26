@@ -1,0 +1,57 @@
+# Workflow end-to-end suite: runs the composite actions under act against a
+# fake Azure. See CLAUDE.md for what "e2e" means here and what it does not.
+#
+# Deliberately a separate workflow rather than a job in ci.yml: it is slower
+# than the rest of CI, and keeping it out of that file avoids conflicting with
+# the branches currently in flight against it.
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python3 -m pip install -q -r engine/requirements-dev.txt
+
+      - name: Install act
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh extension install nektos/gh-act
+
+      - name: Run the e2e suite
+        # The suite starts and stops Azurite and the fake GitHub API itself, on
+        # a fixed docker network with fixed container names, so it must stay
+        # serial -- no -n/xdist here.
+        run: python3 -m pytest tests/e2e -q --durations=10
+
+      - name: Upload act logs on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-act-logs
+          # One act.log plus the resource graph and call logs per scenario:
+          # enough to see which step failed and what the run had done to the
+          # fake cloud by then.
+          path: tests/e2e/.work/*/tests/e2e/state/
+          retention-days: 7
+          if-no-files-found: warn

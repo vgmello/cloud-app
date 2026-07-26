@@ -62,9 +62,15 @@ PLATFORM_PATHS = [
     "bootstrap.fingerprint", ".actrc",
 ]
 
+# .terraform.lock.hcl is deliberately NOT excluded: bootcache hashes its
+# semantic lines into the bootstrap fingerprint, so dropping it from the
+# scratch workspace makes the control side compute a fingerprint that can never
+# match the committed one, and every cached bootstrap misses.
 RSYNC_EXCLUDES = [
-    ".git", ".terraform", ".terraform.lock.hcl", "node_modules",
+    ".git", ".terraform", "node_modules",
     "__pycache__", ".pytest_cache", ".ruff_cache", "htmlcov", ".coverage",
+    # Never copy one scratch workspace into another.
+    ".work", "central-workspace", "caller-workspace",
 ]
 
 USES_RE = re.compile(r"uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)@([A-Za-z0-9_.-]+)")
@@ -280,6 +286,12 @@ class Workspace:
             "--eventpath", str(self.path / "event.json"),
             "--network", NETWORK,
             "--container-architecture", CONTAINER_ARCH,
+            # act silently no-ops an `actions/checkout` that has no
+            # `repository:` -- the workspace is already the repo, so it assumes
+            # there is nothing to do. deploy-stack relies on exactly that step
+            # to populate central-workspace/, so without this the checkout stub
+            # never runs and the directory never exists.
+            "--no-skip-checkout",
             *self.env_flags(knobs),
             *local_repos,
         ]
@@ -343,9 +355,20 @@ class Workspace:
     def app_token_requests(self):
         return self._jsonl("app-token-requests.jsonl")
 
-    def artifact(self, name, filename):
-        path = self.state / "artifacts" / name / filename
-        return json.loads(path.read_text()) if path.exists() else None
+    def artifact(self, filename):
+        """Read a file out of whichever artifact the run uploaded. The artifact
+        name embeds github.run_id, which act picks, so match on the file."""
+        matches = sorted((self.state / "artifacts").glob(f"*/{filename}"))
+        if not matches:
+            return None
+        return json.loads(matches[0].read_text())
+
+    def remote_file(self, checkout_path, repo_path):
+        """A file as it exists on the local bare remote the checkout stub set
+        up -- i.e. what a `git push` from inside the run actually persisted."""
+        bare = self.state / "remotes" / f"{checkout_path.replace('/', '_')}.git"
+        result = _run(["git", "-C", str(bare), "show", f"main:{repo_path}"])
+        return result.stdout if result.returncode == 0 else None
 
     def az_commands(self):
         return [" ".join(call["command"]) for call in self.az_calls()]
@@ -445,9 +468,12 @@ def workspace(request, action_pins, network, images):
 
     ws = Workspace(path, action_pins)
     # Default wiring; scenarios override before calling .act().
+    # Both sources must live inside the workspace: --bind mounts only the
+    # directory act was pointed at, so a path under the real repo would not
+    # exist in the container.
     ws.checkout_map({
         "central-workspace": str(path),
-        "caller-workspace": str(E2E_DIR / "fixtures" / "caller"),
+        "caller-workspace": str(path / "tests" / "e2e" / "fixtures" / "caller"),
     })
     ws.fakegh()
     ws.scenario()
@@ -459,6 +485,22 @@ def workspace(request, action_pins, network, images):
         yield ws
     finally:
         _docker("rm", "-f", FAKEGH, check=False)
+        _docker("rm", "-f", AZURITE, check=False)
+
+
+@pytest.fixture
+def azurite(network, images, tmp_path):
+    """Just Azurite, for tests that exercise the storage path without act.
+
+    Shares the fixed container name with the `workspace` fixture, so these
+    cannot run concurrently -- the suite is serial by design.
+    """
+    os.environ["AZURITE_BLOB_URL"] = f"http://127.0.0.1:{AZURITE_HOST_PORT}"
+    os.environ.setdefault("FAKECLOUD_STATE", str(tmp_path))
+    _start_azurite()
+    try:
+        yield f"http://127.0.0.1:{AZURITE_HOST_PORT}"
+    finally:
         _docker("rm", "-f", AZURITE, check=False)
 
 
