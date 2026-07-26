@@ -12,6 +12,7 @@ import yaml
 
 from . import (
     backend,
+    bootcache,
     builds,
     customtf,
     dockerbuild,
@@ -228,6 +229,26 @@ def cmd_bootstrap_vars(args):
     print(json.dumps(out))
 
 
+def cmd_bootstrap_fingerprint(args):
+    print(bootcache.fingerprint(args.root))
+
+
+def cmd_bootstrap_cache(args):
+    local = Path(args.fingerprint_file).read_text().strip() if Path(args.fingerprint_file).exists() else ""
+    cache = None
+    cache_path = Path(args.cache_file)
+    if cache_path.exists():
+        try:
+            cache = load_yaml(cache_path.read_text())
+        except Exception as exc:  # a malformed cache is a miss, never a failure
+            gha.warning(f"ignoring unreadable bootstrap cache: {exc}")
+    hit = bootcache.use_cache(local, cache)
+    outputs = {"use_cache": "true" if hit else "false"}
+    outputs.update(bootcache.cache_values(cache) if hit else bootcache.cache_values(None))
+    gha.write_outputs(outputs)
+    print(f"bootstrap cache: {'hit' if hit else 'miss'}")
+
+
 def cmd_validate_lock(args):
     registry.validate_names(args.environment, args.stack_name, args.caller_repo, args.stack_file)
     stack_path = registry.resolve_stack_path(args.caller_root, args.stack_file)
@@ -364,6 +385,15 @@ def main(argv=None):
     p.add_argument("--central-repo", required=True)
     p.add_argument("--platform-file", required=True)
     p.set_defaults(func=cmd_bootstrap_vars)
+
+    p = sub.add_parser("bootstrap-fingerprint")
+    p.add_argument("--root", default=".")
+    p.set_defaults(func=cmd_bootstrap_fingerprint)
+
+    p = sub.add_parser("bootstrap-cache")
+    p.add_argument("--fingerprint-file", required=True)
+    p.add_argument("--cache-file", required=True)
+    p.set_defaults(func=cmd_bootstrap_cache)
 
     p = sub.add_parser("validate-lock")
     p.add_argument("--environment", required=True)

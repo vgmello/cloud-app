@@ -445,3 +445,81 @@ def test_subprocess_failure_redacts_credential_arguments():
     assert "sk_live_secret" not in rendered
     assert "--value ***" in rendered
     assert "--name stripe-key" in rendered
+
+
+def test_bootstrap_cache_cli_uses_a_matching_cache(tmp_path, monkeypatch, capsys):
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "fp").write_text("sha256:abc\n")
+    (tmp_path / "cache.yml").write_text(
+        "resource_group: rg-orders-api-dev\n"
+        "plan_client_id: 1111\n"
+        "apply_client_id: 2222\n"
+        "fingerprint: sha256:abc\n"
+    )
+
+    cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "fp"),
+        "--cache-file", str(tmp_path / "cache.yml"),
+    ])
+
+    written = out_file.read_text()
+    assert "use_cache=true" in written
+    assert "resource_group=rg-orders-api-dev" in written
+    assert "plan_client_id=1111" in written
+
+
+def test_bootstrap_cache_cli_misses_when_file_absent(tmp_path, monkeypatch):
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "fp").write_text("sha256:abc\n")
+
+    cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "fp"),
+        "--cache-file", str(tmp_path / "nope.yml"),
+    ])
+
+    assert "use_cache=false" in out_file.read_text()
+
+
+def test_bootstrap_cache_cli_misses_on_stale_fingerprint(tmp_path, monkeypatch):
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "fp").write_text("sha256:current\n")
+    (tmp_path / "cache.yml").write_text(
+        "resource_group: rg\nplan_client_id: 1\napply_client_id: 2\n"
+        "fingerprint: sha256:stale\n"
+    )
+
+    cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "fp"),
+        "--cache-file", str(tmp_path / "cache.yml"),
+    ])
+
+    assert "use_cache=false" in out_file.read_text()
+
+
+def test_bootstrap_cache_cli_misses_on_malformed_cache(tmp_path, monkeypatch):
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "fp").write_text("sha256:abc\n")
+    (tmp_path / "cache.yml").write_text("just a string\n")
+
+    cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "fp"),
+        "--cache-file", str(tmp_path / "cache.yml"),
+    ])
+
+    assert "use_cache=false" in out_file.read_text()
