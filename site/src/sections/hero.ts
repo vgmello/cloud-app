@@ -1,15 +1,30 @@
 import { html, escapeHtml } from "../lib/html";
 import { DOCS, sample } from "../content";
+import type { CodeSample } from "../content";
 import type { Section } from "./index";
 
-const TABS = [sample("hero-manifest"), sample("hero-workflow")];
+const TABS = [
+  sample("hero-manifest"),
+  sample("hero-workflow"),
+  sample("hero-resources"),
+];
 
-function codePanel(
-  id: string,
-  filename: string,
-  code: string,
-  active: boolean,
-): string {
+function codePanel(entry: CodeSample, active: boolean): string {
+  const { id, filename, code, kind } = entry;
+  const copyButton =
+    kind === "resources"
+      ? ""
+      : html`
+          <button
+            type="button"
+            hidden
+            data-copy-target="code-${id}"
+            aria-label="Copy ${escapeHtml(filename)}"
+            class="absolute right-3 top-3 rounded-md border border-line bg-bg/80 px-2.5 py-1 font-mono text-xs text-muted transition-colors duration-150 hover:text-ink focus-visible:text-ink"
+          >
+            Copy
+          </button>
+        `;
   return html`
     <div
       id="panel-${id}"
@@ -19,15 +34,7 @@ function codePanel(
       ${active ? "" : "hidden"}
       class="relative"
     >
-      <button
-        type="button"
-        hidden
-        data-copy-target="code-${id}"
-        aria-label="Copy ${escapeHtml(filename)}"
-        class="absolute right-3 top-3 rounded-md border border-line bg-bg/80 px-2.5 py-1 font-mono text-xs text-muted transition-colors duration-150 hover:text-ink focus-visible:text-ink"
-      >
-        Copy
-      </button>
+      ${copyButton}
       <pre
         id="code-${id}"
         tabindex="0"
@@ -53,19 +60,20 @@ export const hero: Section = {
         class="relative mx-auto w-full max-w-5xl px-6 pb-20 pt-20 md:pb-28 md:pt-28"
       >
         <p class="font-mono text-xs tracking-[0.14em] text-accent">
-          AZURE · TERRAFORM · GITHUB ACTIONS
+          TERRAFORM UNDERNEATH · GITHUB ACTIONS · AZURE TODAY
         </p>
 
         <h1
           class="mt-7 max-w-3xl text-[clamp(2.25rem,6vw,4.5rem)] font-semibold leading-[1.04] tracking-[-0.035em]"
         >
-          Ship Azure infra without writing Terraform.
+          Ship infrastructure without writing Terraform.
         </h1>
 
         <p class="prose-measure mt-6 text-lg leading-relaxed">
-          Describe your app in an eleven-line manifest. One Action step turns it
-          into a full stack — Container Apps, Key Vault, Postgres, private
-          networking — and keeps it there.
+          Describe your app in an eleven-line manifest instead of wiring
+          Container Apps, Key Vault, Postgres, and private networking by hand.
+          One Action step turns the manifest into that stack — and keeps it
+          there.
         </p>
 
         <div class="mt-9 flex flex-wrap items-center gap-3">
@@ -87,7 +95,7 @@ export const hero: Section = {
         >
           <div
             role="tablist"
-            aria-label="Files you write"
+            aria-label="The manifest, the workflow, and what they create"
             class="flex gap-1 border-b border-line px-2"
           >
             ${TABS.map(
@@ -106,9 +114,7 @@ export const hero: Section = {
               `,
             )}
           </div>
-          ${TABS.map((entry, index) =>
-            codePanel(entry.id, entry.filename, entry.code, index === 0),
-          )}
+          ${TABS.map((entry, index) => codePanel(entry, index === 0))}
         </div>
       </div>
     </section>

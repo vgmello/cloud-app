@@ -44,6 +44,13 @@ describe("code samples", () => {
   it("throws a useful error for an unknown sample id", () => {
     expect(() => sample("does-not-exist")).toThrow(/does-not-exist/);
   });
+
+  it("ships the resources sample without schema-validating it as a manifest", () => {
+    const resources = sample("hero-resources");
+    expect(resources.kind).toBe("resources");
+    expect(manifests.map((entry) => entry.id)).not.toContain(resources.id);
+    expect(SAMPLES).toContain(resources);
+  });
 });
 
 describe("documentation links", () => {

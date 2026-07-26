@@ -11,7 +11,7 @@ export interface CodeSample {
   readonly id: string;
   readonly filename: string;
   readonly label: string;
-  readonly kind: "manifest" | "workflow";
+  readonly kind: "manifest" | "workflow" | "resources";
   readonly code: string;
 }
 
@@ -56,6 +56,26 @@ jobs:
           plan_only: \${{ github.event_name == 'pull_request' }}
           app-id: \${{ secrets.APP_ID }}
           app-private-key: \${{ secrets.APP_PRIVATE_KEY }}
+`,
+  },
+  {
+    id: "hero-resources",
+    filename: "Resources created",
+    label: "Resources created",
+    kind: "resources",
+    code: `# terraform plan → 11 resources, none of which you wrote
+
+module.keyvault.azurerm_key_vault.this                                             kv-orders-api-dev
+module.keyvault.module.private_endpoint.azurerm_private_endpoint.this
+module.container_app["main"].azurerm_user_assigned_identity.this
+module.container_app["main"].azurerm_role_assignment.keyvault
+module.container_app["main"].azurerm_role_assignment.acr
+module.container_app["main"].azurerm_container_app.this                            ca-orders-api-dev
+module.database["main"].random_password.admin
+module.database["main"].azurerm_postgresql_flexible_server.this[0]                 psql-orders-api-dev
+module.database["main"].azurerm_postgresql_flexible_server_database.this["main"]
+module.database["main"].module.private_endpoint[0].azurerm_private_endpoint.this
+module.database["main"].azurerm_key_vault_secret.database_url["main"]              database-url
 `,
   },
   {

@@ -26,10 +26,11 @@ describe("hero section", () => {
     const host = render();
     const tabs = host.querySelectorAll('[role="tab"]');
     const panels = host.querySelectorAll<HTMLElement>('[role="tabpanel"]');
-    expect(tabs).toHaveLength(2);
-    expect(panels).toHaveLength(2);
+    expect(tabs).toHaveLength(3);
+    expect(panels).toHaveLength(3);
     expect(panels[0]?.hasAttribute("hidden")).toBe(false);
     expect(panels[1]?.hasAttribute("hidden")).toBe(true);
+    expect(panels[2]?.hasAttribute("hidden")).toBe(true);
   });
 
   it("wires each tab to its panel with matching aria ids", () => {
@@ -53,5 +54,38 @@ describe("hero section", () => {
     for (const button of render().querySelectorAll("[data-copy-target]")) {
       expect(button.hasAttribute("hidden")).toBe(true);
     }
+  });
+
+  describe("the resources tab", () => {
+    it("renders as a third tab wired to its panel like the other two", () => {
+      const host = render();
+      const resourcesTab = host.querySelector(`#tab-${sample("hero-resources").id}`);
+      expect(resourcesTab).not.toBeNull();
+      expect(resourcesTab?.getAttribute("role")).toBe("tab");
+
+      const panelId = resourcesTab?.getAttribute("aria-controls");
+      const panel = host.querySelector(`#${panelId}`);
+      expect(panel).not.toBeNull();
+      expect(panel?.getAttribute("role")).toBe("tabpanel");
+      expect(panel?.getAttribute("aria-labelledby")).toBe(resourcesTab?.id);
+    });
+
+    it("shows the resources sample verbatim", () => {
+      const host = render();
+      const code = host.querySelector(
+        `#panel-${sample("hero-resources").id} pre`,
+      )?.textContent;
+      expect(code).toBe(sample("hero-resources").code);
+    });
+
+    it("keeps the pre keyboard-accessible with no copy button, since there is nothing to paste", () => {
+      const host = render();
+      const panel = host.querySelector(`#panel-${sample("hero-resources").id}`);
+      const pre = panel?.querySelector("pre");
+      expect(pre?.getAttribute("role")).toBe("region");
+      expect(pre?.getAttribute("tabindex")).toBe("0");
+      expect(pre?.getAttribute("aria-label")).toBeTruthy();
+      expect(panel?.querySelector("[data-copy-target]")).toBeNull();
+    });
   });
 });
