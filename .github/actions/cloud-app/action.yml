@@ -183,19 +183,23 @@ runs:
         OWNER: ${{ github.repository_owner }}
         CONTROL_REPO: ${{ inputs.control-repo }}
         CACHE_PATH: registries/${{ inputs.env }}/${{ steps.parse.outputs.name }}.bootstrap.yml
-        CACHE_FILE: ${{ runner.temp }}/bootstrap-cache.yml
+        CACHE_FILE: ${{ runner.temp }}/bootstrap-cache-${{ inputs.env }}-${{ steps.parse.outputs.name }}.yml
       run: python3 "${{ github.action_path }}/../../scripts/fetch_bootstrap_cache.py" "$CACHE_FILE"
 
     - name: Decide bootstrap
       id: cache
       shell: bash
       env:
-        CACHE_FILE: ${{ runner.temp }}/bootstrap-cache.yml
+        CACHE_FILE: ${{ runner.temp }}/bootstrap-cache-${{ inputs.env }}-${{ steps.parse.outputs.name }}.yml
+        STACK_NAME: ${{ steps.parse.outputs.name }}
+        TARGET_ENV: ${{ inputs.env }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp bootstrap-cache
         --fingerprint-file "${{ github.action_path }}/../../../bootstrap.fingerprint"
         --cache-file "$CACHE_FILE"
+        --stack-name "$STACK_NAME"
+        --environment "$TARGET_ENV"
 
     - name: Bootstrap dispatch (Phase 1)
       id: bootstrap
@@ -221,9 +225,13 @@ runs:
       id: phase1
       shell: bash
       env:
-        RG: ${{ steps.bootstrap.outputs.resource_group || steps.cache.outputs.resource_group }}
-        PLAN_ID: ${{ steps.bootstrap.outputs.plan_client_id || steps.cache.outputs.plan_client_id }}
-        APPLY_ID: ${{ steps.bootstrap.outputs.apply_client_id || steps.cache.outputs.apply_client_id }}
+        # One source of truth per run, not per field: on the cache path (dispatch
+        # skipped) all three come from the cache; otherwise all three come from
+        # the dispatch. A dispatch that returns only some ids must never be
+        # patched up with cache values from a different bootstrap.
+        RG: ${{ steps.bootstrap.outcome == 'skipped' && steps.cache.outputs.resource_group || steps.bootstrap.outputs.resource_group }}
+        PLAN_ID: ${{ steps.bootstrap.outcome == 'skipped' && steps.cache.outputs.plan_client_id || steps.bootstrap.outputs.plan_client_id }}
+        APPLY_ID: ${{ steps.bootstrap.outcome == 'skipped' && steps.cache.outputs.apply_client_id || steps.bootstrap.outputs.apply_client_id }}
       run: |
         if [ -z "$RG" ] || [ -z "$PLAN_ID" ] || [ -z "$APPLY_ID" ]; then
           echo "::error::bootstrap identities unresolved (resource_group='$RG'); the bootstrap dispatch did not return them"
@@ -244,6 +252,8 @@ runs:
         STACK_NAME: ${{ steps.parse.outputs.name }}
         DEPLOY_ENV: ${{ inputs.env }}
         CALLER_BRANCH: ${{ github.ref_name }}
+        BOOTSTRAP_OUTCOME: ${{ steps.bootstrap.outcome }}
+        TARGET_RUN_URL: ${{ steps.bootstrap.outputs.TARGET_RUN_URL }}
       run: |
         cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
         ### Bootstrap Dispatch Summary
@@ -253,7 +263,7 @@ runs:
           echo "- **Stack Name:** \`$STACK_NAME\`"
           echo "- **Environment:** \`$DEPLOY_ENV\`"
           echo "- **Caller Branch:** \`$CALLER_BRANCH\`"
-          if [ -z "$TARGET_RUN_URL" ]; then
+          if [ "$BOOTSTRAP_OUTCOME" = "skipped" ]; then
             echo "- **Phase 1:** served from the cached bootstrap result (no dispatch)"
           else
             echo "- **[View Control Bootstrap Run]($TARGET_RUN_URL)**"

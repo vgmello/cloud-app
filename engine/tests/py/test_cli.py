@@ -454,9 +454,11 @@ def test_bootstrap_cache_cli_uses_a_matching_cache(tmp_path, monkeypatch, capsys
     monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
     (tmp_path / "fp").write_text("sha256:abc\n")
     (tmp_path / "cache.yml").write_text(
+        "stack_name: orders-api\n"
+        "environment: dev\n"
         "resource_group: rg-orders-api-dev\n"
-        "plan_client_id: 1111\n"
-        "apply_client_id: 2222\n"
+        "plan_client_id: 11111111-1111-1111-1111-111111111111\n"
+        "apply_client_id: 22222222-2222-2222-2222-222222222222\n"
         "fingerprint: sha256:abc\n"
     )
 
@@ -464,12 +466,14 @@ def test_bootstrap_cache_cli_uses_a_matching_cache(tmp_path, monkeypatch, capsys
         "bootstrap-cache",
         "--fingerprint-file", str(tmp_path / "fp"),
         "--cache-file", str(tmp_path / "cache.yml"),
+        "--stack-name", "orders-api",
+        "--environment", "dev",
     ])
 
     written = out_file.read_text()
     assert "use_cache=true" in written
     assert "resource_group=rg-orders-api-dev" in written
-    assert "plan_client_id=1111" in written
+    assert "plan_client_id=11111111-1111-1111-1111-111111111111" in written
 
 
 def test_bootstrap_cache_cli_misses_when_file_absent(tmp_path, monkeypatch):
@@ -483,6 +487,8 @@ def test_bootstrap_cache_cli_misses_when_file_absent(tmp_path, monkeypatch):
         "bootstrap-cache",
         "--fingerprint-file", str(tmp_path / "fp"),
         "--cache-file", str(tmp_path / "nope.yml"),
+        "--stack-name", "orders-api",
+        "--environment", "dev",
     ])
 
     assert "use_cache=false" in out_file.read_text()
@@ -495,7 +501,10 @@ def test_bootstrap_cache_cli_misses_on_stale_fingerprint(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
     (tmp_path / "fp").write_text("sha256:current\n")
     (tmp_path / "cache.yml").write_text(
-        "resource_group: rg\nplan_client_id: 1\napply_client_id: 2\n"
+        "stack_name: orders-api\nenvironment: dev\n"
+        "resource_group: rg\n"
+        "plan_client_id: 11111111-1111-1111-1111-111111111111\n"
+        "apply_client_id: 22222222-2222-2222-2222-222222222222\n"
         "fingerprint: sha256:stale\n"
     )
 
@@ -503,6 +512,8 @@ def test_bootstrap_cache_cli_misses_on_stale_fingerprint(tmp_path, monkeypatch):
         "bootstrap-cache",
         "--fingerprint-file", str(tmp_path / "fp"),
         "--cache-file", str(tmp_path / "cache.yml"),
+        "--stack-name", "orders-api",
+        "--environment", "dev",
     ])
 
     assert "use_cache=false" in out_file.read_text()
@@ -520,6 +531,8 @@ def test_bootstrap_cache_cli_misses_on_malformed_cache(tmp_path, monkeypatch):
         "bootstrap-cache",
         "--fingerprint-file", str(tmp_path / "fp"),
         "--cache-file", str(tmp_path / "cache.yml"),
+        "--stack-name", "orders-api",
+        "--environment", "dev",
     ])
 
     assert "use_cache=false" in out_file.read_text()
@@ -534,7 +547,10 @@ def test_bootstrap_cache_cli_misses_on_unreadable_fingerprint(tmp_path, monkeypa
     monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
     (tmp_path / "adir").mkdir()
     (tmp_path / "cache.yml").write_text(
-        "resource_group: rg\nplan_client_id: 1\napply_client_id: 2\n"
+        "stack_name: orders-api\nenvironment: dev\n"
+        "resource_group: rg\n"
+        "plan_client_id: 11111111-1111-1111-1111-111111111111\n"
+        "apply_client_id: 22222222-2222-2222-2222-222222222222\n"
         "fingerprint: sha256:abc\n"
     )
 
@@ -542,6 +558,37 @@ def test_bootstrap_cache_cli_misses_on_unreadable_fingerprint(tmp_path, monkeypa
         "bootstrap-cache",
         "--fingerprint-file", str(tmp_path / "adir"),
         "--cache-file", str(tmp_path / "cache.yml"),
+        "--stack-name", "orders-api",
+        "--environment", "dev",
+    ])
+
+    assert rc == 0
+    assert "use_cache=false" in out_file.read_text()
+
+
+def test_bootstrap_cache_cli_misses_on_undecodable_fingerprint(tmp_path, monkeypatch):
+    """A non-UTF-8 fingerprint file raises UnicodeDecodeError (a ValueError),
+    not OSError. It must still be treated as a cache miss, not surfaced as a
+    failed deploy."""
+    from cloudapp import cli
+
+    out_file = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    (tmp_path / "fp").write_bytes(b"\xff\xfe\x00invalid-utf8")
+    (tmp_path / "cache.yml").write_text(
+        "stack_name: orders-api\nenvironment: dev\n"
+        "resource_group: rg\n"
+        "plan_client_id: 11111111-1111-1111-1111-111111111111\n"
+        "apply_client_id: 22222222-2222-2222-2222-222222222222\n"
+        "fingerprint: sha256:abc\n"
+    )
+
+    rc = cli.main([
+        "bootstrap-cache",
+        "--fingerprint-file", str(tmp_path / "fp"),
+        "--cache-file", str(tmp_path / "cache.yml"),
+        "--stack-name", "orders-api",
+        "--environment", "dev",
     ])
 
     assert rc == 0

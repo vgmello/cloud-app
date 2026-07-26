@@ -144,6 +144,15 @@ control repo's `bootstrap.yml` at that same ref, so pinning an immutable tag
 bootstrap stack reaches you only when you move your pin to a tag (or `main`)
 that includes it.
 
+**Pinning a commit SHA is not supported for this action.** The
+workflow-dispatch API only accepts a branch or tag as the ref, so a
+SHA-pinned caller (`uses: .../cloud-app@<sha>`) falls back to dispatching
+`main` instead of the pinned commit. That means the bootstrap no longer
+matches the action version you pinned, and — because the bootstrap cache
+compares against the fingerprint shipped at your pinned ref, not `main`'s —
+the cache will never hit: every deploy pays the full dispatch round trip.
+Callers who want an immutable pin should pin a full `vX.Y.Z` tag instead.
+
 ## Caller-supplied Terraform
 
 For a resource the platform doesn't model, point `terraform:` at a directory of

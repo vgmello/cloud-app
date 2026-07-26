@@ -116,12 +116,21 @@ Replacing the unconditional dispatch:
    from the pinned action tree. No API call, no computation.
 2. Read `registries/<env>/<stack>.bootstrap.yml` from the control repo's default
    branch via the Contents API, using the App token.
-3. **Use the cache** when the file parses, its `fingerprint` equals the local
-   one, and all three values are non-empty → emit them as the `bootstrap` step
-   outputs and skip the dispatch entirely.
-4. **Dispatch** otherwise — cache absent, unreadable, malformed, stale, any value
-   empty, or the run is a `workflow_dispatch` (so a manual run remains the
-   operator's way to force a re-bootstrap).
+3. **Use the cache** — decided by `bootcache.use_cache(local_fingerprint, cache,
+stack_name, env)` — when: the cache parses as a mapping; its `fingerprint`
+   equals the local one; its own `stack_name` and `environment` fields match
+   the caller's (defence in depth against a cache belonging to a different
+   stack/environment reaching this decision); all three values
+   (`resource_group`, `plan_client_id`, `apply_client_id`) are present and
+   non-blank; and each value passes a conservative charset check (`plan_client_id`
+   / `apply_client_id` as a GUID, `resource_group` against Azure's allowed
+   resource-group-name characters) before it can reach a shell downstream. On a
+   match, emit the three values as the `bootstrap` step outputs and skip the
+   dispatch entirely.
+4. **Dispatch** otherwise — cache absent, unreadable, malformed, a stack/environment
+   mismatch, stale, any value empty or failing its charset check, or the run is a
+   `workflow_dispatch` (so a manual run remains the operator's way to force a
+   re-bootstrap).
 
 The decision itself is a pure engine function so it is unit-testable; the action
 only fetches and passes it the two inputs.
@@ -171,16 +180,19 @@ operational sharp edge the cache introduces.
 - `.github/actions/deploy-stack/action.yml` — write the cache file on success
 - `engine/cloudapp/cli.py` — `bootstrap-fingerprint` and `bootstrap-cache` commands
 - `registries/README.md` — the cache file, and the revocation procedure
-- `docs/usage.md`, `docs/trust-modes.md` — versioning and the cached path
+- `docs/usage.md` — versioning and the cached path
 
 ## Testing
 
 - `bootcache.fingerprint(paths)`: deterministic; order-independent; changes when
   any covered file changes; unaffected by files outside the covered paths.
-- `bootcache.use_cache(local_fingerprint, cache)`: true only when the fingerprint
-  matches and all three values are non-empty; false for a missing file, a
-  malformed document, a mismatched fingerprint, and each individually empty
-  value. These are the fail-safe paths and each gets its own test.
+- `bootcache.use_cache(local_fingerprint, cache, stack_name, env)`: true only when
+  the fingerprint matches, the cache's own `stack_name`/`environment` fields match
+  the caller's, all three values are non-empty, and each value passes its charset
+  check; false for a missing file, a malformed document, a mismatched fingerprint,
+  a mismatched stack/environment, each individually empty value, and a value
+  failing its charset check. These are the fail-safe paths and each gets its own
+  test.
 - CLI: `bootstrap-fingerprint` prints a stable digest; `bootstrap-cache` emits
   the decision plus the three values as step outputs.
 - Action: YAML parses; the dispatch step is conditional on the decision; the

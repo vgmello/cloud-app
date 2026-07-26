@@ -24,6 +24,13 @@ def encode_path(path):
 
 def main():
     dest = sys.argv[1]
+    # Clear any stale file from a previous invocation in the same job (two
+    # stacks/environments sharing a runner) before the request, so a failed
+    # fetch below can never leave another stack's cached identities in place.
+    try:
+        os.remove(dest)
+    except FileNotFoundError:
+        pass
     url = (
         f"{API}/repos/{os.environ['OWNER']}/{os.environ['CONTROL_REPO']}"
         f"/contents/{encode_path(os.environ['CACHE_PATH'])}"

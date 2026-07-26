@@ -68,6 +68,11 @@ jobs:
           python3 engine/generate_tf_fixtures.py
           git diff --exit-code terraform/azure/tests/fixtures
 
+      # Terraform run artefacts (tfplan, .terraform/, *.tfstate, crash.log) inside
+      # terraform/azure/bootstrap are excluded from the fingerprint, and
+      # .terraform.lock.hcl is hashed only on its semantic version/constraints
+      # lines, so this no longer needs to run before "Bootstrap stacks" below.
+      # It stays here anyway, next to the other drift checks.
       - name: Bootstrap fingerprint drift
         run: |
           PYTHONPATH=engine python3 -m cloudapp bootstrap-fingerprint --root . > bootstrap.fingerprint
