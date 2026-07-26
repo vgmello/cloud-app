@@ -33,6 +33,17 @@ jobs:
       - name: Install test dependencies
         run: python3 -m pip install -q -r engine/requirements-dev.txt
 
+      # ci.yml's ruff step covers engine/ and .github/scripts. Linting the
+      # suite here rather than extending that step keeps this change out of a
+      # file other branches are editing.
+      - name: Ruff
+        run: >-
+          ruff check --config engine/ruff.toml
+          tests/e2e
+          tests/e2e/fakecloud/bin/az
+          tests/e2e/fakecloud/bin/terraform
+          tests/e2e/fakecloud/bin/docker
+
       - name: Install act
         env:
           GH_TOKEN: ${{ github.token }}

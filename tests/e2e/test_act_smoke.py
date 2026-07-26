@@ -16,7 +16,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from conftest import ACT_IMAGE, CONTAINER_ARCH
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
