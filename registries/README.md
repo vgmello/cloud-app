@@ -66,6 +66,22 @@ repos alternate re-bootstrapping (and re-applying) the stack on every deploy.
 Mixed pins across `allowed_repos` should be treated as a misconfiguration to
 fix, not a stable state.
 
+### Force-invalidating every cached bootstrap
+
+`CACHE_EPOCH` in `engine/cloudapp/bootcache.py` is the one-line lever to
+invalidate every cached bootstrap in every environment at once, independent
+of any file content — for situations the content fingerprint can't see (e.g.
+a bug discovered in a past bootstrap run). Bump it and regenerate
+`bootstrap.fingerprint` **in the same commit**:
+
+```bash
+PYTHONPATH=engine python3 -m cloudapp bootstrap-fingerprint --root . > bootstrap.fingerprint
+```
+
+Skipping the regeneration leaves the committed fingerprint stale, and CI's
+drift check (`.github/workflows/ci.yml`, "Bootstrap fingerprint drift") fails
+the build.
+
 ### Granting a repository access
 
 Adding a repo to `allowed_repos` is **not sufficient on its own** when a valid

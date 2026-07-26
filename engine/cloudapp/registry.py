@@ -85,7 +85,13 @@ def persist_lock(runner, cwd, env, stack_name, caller_repo):
     any git step fails (e.g. a push race), the lock was not persisted, so we
     raise instead of letting the deploy proceed with an unregistered stack.
     Arg-lists (never a shell string) keep the caller-controlled name/repo from
-    being interpolated into a command."""
+    being interpolated into a command.
+
+    ``--autostash`` on the rebase: `terraform init` on the runner can leave
+    the tree dirty (e.g. appending a platform hash to a tracked provider lock
+    file) even before this function's own commit. Since this path fails
+    closed, a plain `pull --rebase` refusing on a dirty tree would turn into a
+    hard failure here rather than a warning."""
     def git(*args):
         runner(["git", *args], cwd=cwd)
 
@@ -94,7 +100,7 @@ def persist_lock(runner, cwd, env, stack_name, caller_repo):
         git("config", "user.email", "github-actions[bot]@users.noreply.github.com")
         git("add", f"registries/{env}/{stack_name}.yml")
         git("commit", "-m", f"lock(registry): auto-register {stack_name} to {caller_repo} [{env}]")
-        git("pull", "--rebase", "origin", "main")
+        git("pull", "--rebase", "--autostash", "origin", "main")
         git("push", "origin", "HEAD:main")
     except subprocess.CalledProcessError as exc:
         raise RegistryError(

@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from cloudapp import bootcache
@@ -61,7 +63,6 @@ def test_fingerprint_ignores_terraform_working_dirs(tmp_path):
         ("terraform/azure/bootstrap/tfplan", "binary plan data\n"),
         ("terraform/azure/bootstrap/foo.tfplan", "binary plan data\n"),
         ("terraform/azure/bootstrap/crash.log", "panic: ...\n"),
-        ("terraform/azure/bootstrap/.terraform.lock.hcl", 'provider "x" { hashes = ["abc"] }\n'),
         ("terraform/azure/bootstrap/tests/bootstrap.tftest.hcl", "run \"x\" {}\n"),
     ],
 )
@@ -81,6 +82,71 @@ def test_fingerprint_unchanged_by_terraform_provider_binary(tmp_path):
     blob.parent.mkdir(parents=True)
     blob.write_text("downloaded provider\n")
     assert bootcache.fingerprint(str(root), bootcache.COVERED) == before
+
+
+def test_tests_dir_skip_is_scoped_to_bootstrap_only(tmp_path):
+    # _SKIP_DIRS_EXACT must key off the full relative path, not the bare
+    # directory name "tests" -- a "tests" dir anywhere else in a covered tree
+    # (e.g. a future environments/tests/ holding real config) must stay
+    # covered rather than being silently dropped.
+    root = _tree(tmp_path)
+    before = bootcache.fingerprint(str(root), bootcache.COVERED)
+    other_tests = root / "environments/tests"
+    other_tests.mkdir(parents=True)
+    (other_tests / "real-config.yml").write_text("location: eastus2\n")
+    assert bootcache.fingerprint(str(root), bootcache.COVERED) != before
+
+
+# --- Fix 3: provider drift within a `~>` range must still invalidate -------
+
+_LOCK_BODY = """# This file is maintained automatically by "terraform init".
+provider "registry.terraform.io/hashicorp/azurerm" {
+  version     = "4.81.0"
+  constraints = "~> 4.0"
+  hashes = [
+    "h1:XhToZua4gtih1Kv8RdStcfND83G4Tmb6GZFT4jEUhDU=",
+  ]
+}
+"""
+
+
+def test_fingerprint_unaffected_by_appended_h1_hash_line(tmp_path):
+    root = _tree(tmp_path)
+    lock = root / "terraform/azure/bootstrap/.terraform.lock.hcl"
+    lock.write_text(_LOCK_BODY)
+    before = bootcache.fingerprint(str(root), bootcache.COVERED)
+    lock.write_text(
+        _LOCK_BODY.replace(
+            '"h1:XhToZua4gtih1Kv8RdStcfND83G4Tmb6GZFT4jEUhDU=",\n',
+            '"h1:XhToZua4gtih1Kv8RdStcfND83G4Tmb6GZFT4jEUhDU=",\n'
+            '    "zh:0732e7b74264ddfa2b90ba69d01c283d3cbae9f72ed3e506c6ac92529fed7fd3",\n',
+        )
+    )
+    assert bootcache.fingerprint(str(root), bootcache.COVERED) == before
+
+
+def test_fingerprint_changes_when_lock_version_line_changes(tmp_path):
+    root = _tree(tmp_path)
+    lock = root / "terraform/azure/bootstrap/.terraform.lock.hcl"
+    lock.write_text(_LOCK_BODY)
+    before = bootcache.fingerprint(str(root), bootcache.COVERED)
+    lock.write_text(_LOCK_BODY.replace('version     = "4.81.0"', 'version     = "4.82.0"'))
+    assert bootcache.fingerprint(str(root), bootcache.COVERED) != before
+
+
+# --- Fix 4: a typo'd or renamed COVERED entry must not be silently dropped -
+
+def test_covered_entries_all_exist_relative_to_repo_root():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    for entry in bootcache.COVERED:
+        full = os.path.join(repo_root, entry)
+        assert os.path.exists(full), f"COVERED entry '{entry}' does not exist at {full}"
+
+
+def test_covered_entry_that_is_missing_warns(tmp_path, capsys):
+    root = _tree(tmp_path)
+    bootcache.fingerprint(str(root), ("does/not/exist",))
+    assert "does/not/exist" in capsys.readouterr().out
 
 
 # --- Fix 2: COVERED must include identity.py, the control action, a file entry,
@@ -211,8 +277,9 @@ def test_use_cache_false_when_environment_field_missing():
 
 # --- Fix 4: values must match a conservative charset before reaching a shell -
 
-def test_use_cache_false_on_malformed_client_id():
-    cache = dict(GOOD, plan_client_id="not-a-guid; rm -rf /")
+@pytest.mark.parametrize("key", ["plan_client_id", "apply_client_id"])
+def test_use_cache_false_on_malformed_client_id(key):
+    cache = dict(GOOD, **{key: "not-a-guid; rm -rf /"})
     assert bootcache.use_cache(FP, cache, STACK, ENV) is False
 
 

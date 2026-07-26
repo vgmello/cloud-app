@@ -160,6 +160,18 @@ def test_persist_lock_pushes_head_to_main_not_a_detached_ref():
     assert fake.commands("git", "push") == [["git", "push", "origin", "HEAD:main"]]
 
 
+def test_persist_lock_rebase_autostashes_a_dirty_tree():
+    # `terraform init` on the runner can leave the tree dirty (e.g. a
+    # platform hash appended to a tracked provider lock file) before this
+    # function's own commit; a plain `pull --rebase` refuses on a dirty tree,
+    # and this path fails closed, so autostash is required, not cosmetic.
+    fake = FakeRunner()
+    registry.persist_lock(fake, "central-workspace", "dev", "orders", "acme/orders")
+    assert fake.commands("git", "pull") == [
+        ["git", "pull", "--rebase", "--autostash", "origin", "main"]
+    ]
+
+
 def test_persist_lock_fail_closed_when_push_rejected():
     fake = FakeRunner(results=[(["git", "push"], FakeResult(returncode=1, stderr="rejected"))])
     with pytest.raises(registry.RegistryError, match="not silently lost|persist"):

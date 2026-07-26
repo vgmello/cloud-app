@@ -28,6 +28,7 @@ jobs:
 
       - name: Verify bootstrap fingerprint is current
         run: |
+          python3 -m pip install --user -q -r engine/requirements.txt
           PYTHONPATH=engine python3 -m cloudapp bootstrap-fingerprint --root . > /tmp/fp
           diff /tmp/fp bootstrap.fingerprint
 

@@ -195,7 +195,7 @@ runs:
     # Fails open: the cache is an optimisation, and a missing one just means the
     # next deploy bootstraps as before. Never fail the bootstrap over it.
     - name: Cache bootstrap result
-      if: ${{ success() && inputs.plan-only == 'false' }}
+      if: ${{ success() && inputs.plan-only != 'true' }}
       shell: bash
       env:
         STACK_NAME: ${{ inputs.stack-name }}
@@ -230,7 +230,7 @@ runs:
           exit 0
         fi
         git commit -m "cache(bootstrap): $STACK_NAME [$TARGET_ENV]" \
-          && git pull --rebase origin main \
+          && git pull --rebase --autostash origin main \
           && git push origin HEAD:main \
           || echo "::warning::could not persist the bootstrap cache; the next deploy will bootstrap again"
 
