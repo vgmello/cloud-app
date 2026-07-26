@@ -17,7 +17,7 @@ const STEPS: readonly Step[] = [
   },
   {
     title: "Pull requests plan, main applies",
-    body: "Every pull request posts a Terraform plan. Merging to main applies it under a resource-group-scoped identity.",
+    body: "Every pull request runs a Terraform plan, there to read in the run summary. Merging to main applies it under a resource-group-scoped identity.",
   },
 ];
 

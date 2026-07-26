@@ -15,7 +15,7 @@ interface Group {
 const GROUPS: readonly Group[] = [
   {
     title: "Compute",
-    note: "Today's Azure primitives — the manifest schema does not pin the platform to them.",
+    note: "Today's Azure primitives — some manifest fields, like the Functions runtimes below, mirror them directly.",
     entries: [
       {
         term: "Container Apps",
