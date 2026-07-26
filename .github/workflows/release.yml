@@ -1,0 +1,48 @@
+name: release
+# Moves the floating tags callers pin. v1 tracks every minor and patch; v1.1
+# tracks every patch; v1.1.1 is immutable and created by the release itself.
+# Callers pin whichever they want, and `control-ref` follows the ref the action
+# was resolved at — so the bootstrap they trigger is the version they pinned.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Full version to release, e.g. v1.2.3
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Move floating tags
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::version must look like v1.2.3 (got '$VERSION')"
+            exit 1
+          fi
+          MAJOR="${VERSION%%.*}"
+          MINOR="${VERSION%.*}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # The immutable tag must not already exist; the floating ones move.
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "::error::$VERSION already exists; immutable tags are never moved"
+            exit 1
+          fi
+          git tag "$VERSION"
+          git tag -f "$MAJOR"
+          git tag -f "$MINOR"
+          git push origin "$VERSION"
+          git push -f origin "$MAJOR" "$MINOR"
+          echo "released $VERSION (moved $MAJOR, $MINOR)" >> "$GITHUB_STEP_SUMMARY"

@@ -68,6 +68,11 @@ jobs:
           python3 engine/generate_tf_fixtures.py
           git diff --exit-code terraform/azure/tests/fixtures
 
+      - name: Bootstrap fingerprint drift
+        run: |
+          PYTHONPATH=engine python3 -m cloudapp bootstrap-fingerprint --root . > bootstrap.fingerprint
+          git diff --exit-code bootstrap.fingerprint
+
       - name: Terraform tests
         run: terraform -chdir=terraform/azure test
 
