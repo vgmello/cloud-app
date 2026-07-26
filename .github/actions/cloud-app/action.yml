@@ -191,11 +191,15 @@ runs:
       shell: bash
       env:
         CACHE_FILE: ${{ runner.temp }}/bootstrap-cache.yml
+        STACK_NAME: ${{ steps.parse.outputs.name }}
+        TARGET_ENV: ${{ inputs.env }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp bootstrap-cache
         --fingerprint-file "${{ github.action_path }}/../../../bootstrap.fingerprint"
         --cache-file "$CACHE_FILE"
+        --stack-name "$STACK_NAME"
+        --environment "$TARGET_ENV"
 
     - name: Bootstrap dispatch (Phase 1)
       id: bootstrap

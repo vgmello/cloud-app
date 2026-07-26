@@ -239,7 +239,9 @@ def cmd_bootstrap_cache(args):
     # fall back to "dispatch" rather than break the deploy.
     try:
         local = Path(args.fingerprint_file).read_text().strip()
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
+        # ValueError covers UnicodeDecodeError from a non-UTF-8 file: still a
+        # miss, never a failed deploy.
         gha.warning(f"ignoring unreadable bootstrap fingerprint: {exc}")
         local = ""
     cache = None
@@ -249,7 +251,7 @@ def cmd_bootstrap_cache(args):
             cache = load_yaml(cache_path.read_text())
         except Exception as exc:  # a malformed cache is a miss, never a failure
             gha.warning(f"ignoring unreadable bootstrap cache: {exc}")
-    hit = bootcache.use_cache(local, cache)
+    hit = bootcache.use_cache(local, cache, args.stack_name, args.environment)
     outputs = {"use_cache": "true" if hit else "false"}
     outputs.update(bootcache.cache_values(cache) if hit else bootcache.cache_values(None))
     gha.write_outputs(outputs)
@@ -400,6 +402,8 @@ def main(argv=None):
     p = sub.add_parser("bootstrap-cache")
     p.add_argument("--fingerprint-file", required=True)
     p.add_argument("--cache-file", required=True)
+    p.add_argument("--stack-name", required=True)
+    p.add_argument("--environment", required=True)
     p.set_defaults(func=cmd_bootstrap_cache)
 
     p = sub.add_parser("validate-lock")
