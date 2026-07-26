@@ -123,9 +123,33 @@ act's `--local-repository` maps `owner/repo@ref` to a directory:
 
 `tests/e2e/fakegh/server.py` serves only the endpoints the two scripts call:
 repo contents (bootstrap cache), workflow dispatch, run status, run jobs,
-artifact list, and artifact zip download. Dispatching recursively runs the
-control-side harness workflow under act, so the two-phase deploy is exercised
-end to end rather than stubbed at the boundary.
+artifact list, and artifact zip download.
+
+A dispatch returns a seeded result rather than recursively running the
+control-side harness under act. Nesting act inside act would need
+docker-in-docker, and it would buy nothing: the caller side already exercises
+the dispatch boundary through this server, and the control side is driven
+directly by `test_deploy_stack.py`. Both halves are covered; only the wire
+between them is seeded.
+
+## Corrections applied during the build
+
+Recorded because each cost real debugging time and none is obvious from act's
+documentation:
+
+- Only `act --env` beats act's built-in `GITHUB_*` values. Setting
+  `GITHUB_API_URL` in workflow- or job-level `env:` is silently overridden;
+  step-level `env:` wins for that step but the design needed it inside a
+  composite action's steps.
+- act silently no-ops an `actions/checkout` that declares no `repository:`,
+  so `deploy-stack`'s `central-workspace/` was never created. The suite passes
+  `--no-skip-checkout`.
+- Scenarios drive `push`, not `workflow_dispatch`. The action forces both the
+  bootstrap dispatch and the apply on a manual dispatch, which hid the
+  cache-hit and rotate lanes entirely.
+- The container architecture is not pinned. Emulating linux/amd64 on Apple
+  silicon made a single scenario take 5m32s instead of 24s, because a
+  composite action shells out to `python3` a couple of dozen times.
 
 ## The one implementation change
 
