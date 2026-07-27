@@ -37,15 +37,30 @@ MAX_POLL_FAILURES = 6
 POLL_INTERVAL = 10
 
 
+# Env-var prefix carrying the dispatch payload. Namespaced to this action:
+# anything the runner or a future action puts in the environment must not be
+# able to ride along into the target workflow's inputs.
+TARGET_INPUT_PREFIX = "CLOUD_APP_ENV_"
+
+
 # --- Pure helpers (unit-tested) ---
 
 def collect_target_inputs(environ):
-    """Map INPUT_* env vars to workflow_dispatch inputs (INPUT_STACK_FILE ->
-    stack_file)."""
+    """Map this action's own prefixed env vars to workflow_dispatch inputs
+    (CLOUD_APP_ENV_STACK_FILE -> stack_file).
+
+    The prefix must be one this action owns. It used to be INPUT_, which is the
+    runner's own namespace for an action's inputs -- so every input of the
+    calling composite action was swept into the dispatch payload alongside the
+    six intended ones, including `app-private-key` and `app-secrets`. The
+    workflow-dispatch API rejects undeclared inputs, so the blast radius was a
+    failed dispatch rather than a silent leak, but the credential had no
+    business being in the payload at all.
+    """
     return {
-        key[len("INPUT_"):].lower(): value
+        key[len(TARGET_INPUT_PREFIX):].lower(): value
         for key, value in environ.items()
-        if key.startswith("INPUT_")
+        if key.startswith(TARGET_INPUT_PREFIX)
     }
 
 

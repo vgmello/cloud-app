@@ -205,7 +205,23 @@ class Workspace:
         failures. See tests/e2e/fakecloud/bin for the knobs each shim reads."""
         (self.state / "scenario.json").write_text(json.dumps(knobs, indent=2))
 
+    def declared_dispatch_inputs(self):
+        """The inputs bootstrap.yml declares, read from the workflow itself.
+
+        Seeded into the fake API so it can reject a payload the real one would
+        422 on. Read rather than hardcoded so adding an input to the workflow
+        does not need a matching edit here.
+        """
+        import yaml
+        workflow = yaml.safe_load(
+            (self.path / ".github" / "workflows" / "bootstrap.yml").read_text()
+        )
+        # PyYAML parses the `on:` key as the boolean True.
+        triggers = workflow.get("on") or workflow.get(True) or {}
+        return sorted((triggers.get("workflow_dispatch") or {}).get("inputs") or {})
+
     def fakegh(self, **config):
+        config.setdefault("declared_inputs", self.declared_dispatch_inputs())
         (self.state / "fakegh.json").write_text(json.dumps(config, indent=2))
 
     def checkout_map(self, mapping):

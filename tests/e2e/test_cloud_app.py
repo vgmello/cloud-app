@@ -80,6 +80,24 @@ def test_first_deploy_dispatches_the_bootstrap(workspace):
     assert request["repositories"] == "cloud-app"
 
 
+def test_the_dispatch_carries_only_the_declared_inputs(workspace):
+    """The payload is assembled by scanning the environment for a prefix, so it
+    is only ever as tight as that prefix is private. It used to be INPUT_ --
+    the runner's own namespace for action inputs -- which swept the caller's
+    App private key and app secrets into the payload alongside the six
+    intended ones. GitHub 422s on undeclared inputs, and so does the fake."""
+    workspace.act("deploy.yml", expect_success=True)
+
+    sent = workspace.dispatches()[0]["inputs"]
+    assert sorted(sent) == workspace.declared_dispatch_inputs()
+
+    # Nothing credential-shaped, whatever else changes.
+    blob = " ".join(f"{k}={v}" for k, v in sent.items())
+    assert "PRIVATE KEY" not in blob
+    assert "sk_test_e2e" not in blob
+    assert not any("key" in k or "secret" in k or "token" in k for k in sent)
+
+
 def test_cache_hit_skips_the_bootstrap_dispatch(workspace):
     """A cached bootstrap whose fingerprint matches the shipped one must serve
     phase 1 outright -- that is the whole point of the cache."""

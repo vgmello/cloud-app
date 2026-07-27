@@ -146,13 +146,28 @@ class Handler(BaseHTTPRequestHandler):
         if not match:
             return self._send(404, {"message": "Not Found"})
 
+        inputs = payload.get("inputs", {})
         record("dispatches.jsonl", {
             "workflow": match.group("wf"),
             "ref": payload.get("ref"),
-            "inputs": payload.get("inputs", {}),
+            "inputs": inputs,
         })
         if config().get("dispatch_status"):
             return self._send(config()["dispatch_status"], {"message": "seeded failure"})
+
+        # GitHub rejects a payload carrying inputs the target workflow does not
+        # declare. Mirroring that is the whole point: a permissive fake here is
+        # what let the action ship eight undeclared inputs -- including the App
+        # private key -- without a single test noticing.
+        declared = set(config().get("declared_inputs") or [])
+        if declared:
+            unexpected = sorted(set(inputs) - declared)
+            if unexpected:
+                return self._send(422, {
+                    "message": "Unexpected inputs provided: "
+                               + ", ".join(repr(name) for name in unexpected),
+                    "documentation_url": "https://docs.github.com/rest",
+                })
         return self._send(200, {
             "workflow_run_id": RUN_ID,
             "html_url": f"http://fakegh/run/{RUN_ID}",

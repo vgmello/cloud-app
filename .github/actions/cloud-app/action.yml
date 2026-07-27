@@ -211,12 +211,12 @@ runs:
         TARGET_REPO: ${{ inputs.control-repo }}
         TARGET_WORKFLOW: bootstrap.yml
         TARGET_BRANCH: ${{ inputs.control-ref || github.action_ref || 'main' }}
-        INPUT_REPO: ${{ github.event.repository.name }}
-        INPUT_MANIFEST: ${{ inputs.manifest }}
-        INPUT_STACK_NAME: ${{ steps.parse.outputs.name }}
-        INPUT_BRANCH: ${{ github.ref_name }}
-        INPUT_ENV: ${{ inputs.env }}
-        INPUT_PLAN_ONLY: ${{ inputs.plan_only }}
+        CLOUD_APP_ENV_REPO: ${{ github.event.repository.name }}
+        CLOUD_APP_ENV_MANIFEST: ${{ inputs.manifest }}
+        CLOUD_APP_ENV_STACK_NAME: ${{ steps.parse.outputs.name }}
+        CLOUD_APP_ENV_BRANCH: ${{ github.ref_name }}
+        CLOUD_APP_ENV_ENV: ${{ inputs.env }}
+        CLOUD_APP_ENV_PLAN_ONLY: ${{ inputs.plan_only }}
       run: python "${{ github.action_path }}/../../scripts/dispatch_and_wait.py"
 
     # One source of truth for the ids: the dispatch when it ran, the cache

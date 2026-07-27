@@ -67,9 +67,9 @@ def no_sleep(dw, monkeypatch):
 
 def test_collect_target_inputs_maps_and_filters(dw):
     environ = {
-        "INPUT_REPO": "acme/orders",
-        "INPUT_MANIFEST": "cloud-app.yml",
-        "INPUT_STACK_NAME": "orders",
+        "CLOUD_APP_ENV_REPO": "acme/orders",
+        "CLOUD_APP_ENV_MANIFEST": "cloud-app.yml",
+        "CLOUD_APP_ENV_STACK_NAME": "orders",
         "GH_TOKEN": "secret",
         "PATH": "/usr/bin",
     }
@@ -78,6 +78,34 @@ def test_collect_target_inputs_maps_and_filters(dw):
         "manifest": "cloud-app.yml",
         "stack_name": "orders",
     }
+
+
+def test_collect_target_inputs_ignores_the_runners_own_input_namespace(dw):
+    """Regression: the prefix used to be INPUT_, which the runner also uses for
+    an action's inputs. Every input of the calling composite action -- including
+    app-private-key and app-secrets -- was swept into the dispatch payload."""
+    environ = {
+        "CLOUD_APP_ENV_REPO": "acme/orders",
+        "INPUT_APP-PRIVATE-KEY": "-----BEGIN PRIVATE KEY-----",
+        "INPUT_APP-SECRETS": "STRIPE_KEY=sk_live_real",
+        "INPUT_VERIFY_TIMEOUT": "300",
+    }
+    assert dw.collect_target_inputs(environ) == {"repo": "acme/orders"}
+
+
+def test_collect_target_inputs_carries_no_credentials(dw):
+    """Whatever else changes, nothing that looks like a credential may reach the
+    control repo's workflow inputs."""
+    environ = {
+        "CLOUD_APP_ENV_REPO": "acme/orders",
+        "CLOUD_APP_ENV_ENV": "prod",
+        "GH_TOKEN": "ghs_token",
+        "INPUT_APP-ID": "123456",
+        "INPUT_APP-PRIVATE-KEY": "-----BEGIN PRIVATE KEY-----",
+    }
+    collected = dw.collect_target_inputs(environ)
+    assert not any("key" in k or "token" in k or "secret" in k for k in collected)
+    assert "-----BEGIN PRIVATE KEY-----" not in "".join(collected.values())
 
 
 def test_collect_target_inputs_empty_when_no_inputs(dw):
