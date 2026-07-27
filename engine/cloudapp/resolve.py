@@ -17,4 +17,9 @@ def resolve(tool, platform_path, env_name):
             f"(environment '{env_name}' has no platform config file)"
         )
     platform = load_yaml(platform_path.read_text())
-    return {"config": {**tool, "environment": env_name, "platform": platform}}
+    # `deploy:` governs how the action ships the stack, not what Terraform
+    # builds. Dropping it here keeps it out of tfvars entirely, so the module
+    # never sees a key it has no use for and the generated test fixtures stay
+    # unchanged when a caller sets a deploy policy.
+    config = {k: v for k, v in tool.items() if k != "deploy"}
+    return {"config": {**config, "environment": env_name, "platform": platform}}

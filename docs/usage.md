@@ -300,8 +300,43 @@ See [trust-modes.md](trust-modes.md) for the three deploy identities, self vs de
   `Running` state, not application health — there is no equivalent of the
   container app's revision provisioning check. A stack containing only
   static sites is not verified at all, since static sites have no revisions
-  to check. Set `verify_deploy: false` to skip the check entirely, or
-  `verify_timeout` (seconds to wait for every resource to become healthy,
-  default 300) to tune how long it polls before failing. Re-run with
-  `always_run_terraform: true` (or a manual dispatch) to force a full
-  Terraform run and finish an incomplete stack.
+  to check. Tune it with the manifest's `deploy:` block (below). Re-run with
+  a manual dispatch to force a full Terraform run and finish an incomplete
+  stack.
+
+## Deploy policy
+
+How the platform ships your stack, as opposed to what the stack is. Optional —
+the defaults below apply when the block is absent.
+
+```yaml
+deploy:
+  always_run_terraform: false # run Terraform even when the manifest is unchanged
+  verify: true # fail the run if a declared resource is missing or unhealthy
+  verify_timeout: 300 # seconds to wait for every resource to become healthy
+
+environments:
+  dev:
+    deploy:
+      verify_timeout: 60 # dev can fail fast
+  prod:
+    deploy:
+      always_run_terraform: true # never take the image-rotation shortcut in prod
+      verify_timeout: 600
+```
+
+Like every other section, `deploy:` deep-merges per environment — which is the
+reason it lives here. These were once inputs on the `cloud-app` action, so a
+single workflow deploying dev and prod had to use the same values for both.
+
+`always_run_terraform: false` (the default) requires checking out with
+`fetch-depth: 2`, so the previous commit is available to diff. Terraform runs
+regardless on plan-only runs, manual dispatches, first deploys, when the
+manifest declares caller-supplied `terraform:`, and when the parent commit is
+unavailable. The change signal is your manifest only — a platform-config change
+in the control repo's `environments/<env>.yml` is not detected, so roll those
+out with a manual dispatch.
+
+The action still accepts `always_run_terraform`, `verify_deploy` and
+`verify_timeout` as inputs. Leave them unset to use the manifest; a non-empty
+value overrides it for every environment that workflow deploys.

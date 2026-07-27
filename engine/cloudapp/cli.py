@@ -100,6 +100,27 @@ def cmd_parse_manifest(args):
     )
 
 
+def cmd_deploy_policy(args):
+    tool = _load_json(args.tool_json)
+    policy = manifest.deploy_policy(tool, {
+        "always_run_terraform": args.always_run_terraform,
+        "verify": args.verify,
+        "verify_timeout": args.verify_timeout,
+    })
+    gha.write_outputs({
+        # Rendered as the lowercase strings the action's `if:` expressions
+        # compare against; GitHub step outputs are strings either way.
+        "always_run_terraform": str(policy["always_run_terraform"]).lower(),
+        "verify": str(policy["verify"]).lower(),
+        "verify_timeout": str(policy["verify_timeout"]),
+    })
+    print(
+        "cloud-app: deploy policy "
+        f"always_run_terraform={policy['always_run_terraform']} "
+        f"verify={policy['verify']} verify_timeout={policy['verify_timeout']}"
+    )
+
+
 def cmd_resolve_config(args):
     tool = _load_json(args.tool_json)
     tfvars = resolve.resolve(tool, args.platform_file, args.environment)
@@ -304,6 +325,16 @@ def main(argv=None):
     p.add_argument("--output-dir", required=True)
     p.add_argument("--app-root", default=".")
     p.set_defaults(func=cmd_parse_manifest)
+
+    p = sub.add_parser("deploy-policy")
+    p.add_argument("--tool-json", required=True)
+    # Empty means "not set by the caller": a composite action's inputs always
+    # carry their declared default, so an empty default is the only way to tell
+    # an explicit value from an unset one.
+    p.add_argument("--always-run-terraform", default="")
+    p.add_argument("--verify", default="")
+    p.add_argument("--verify-timeout", default="")
+    p.set_defaults(func=cmd_deploy_policy)
 
     p = sub.add_parser("resolve-config")
     p.add_argument("--tool-json", required=True)

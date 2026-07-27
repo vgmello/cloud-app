@@ -56,17 +56,24 @@ inputs:
       change (control repo `environments/<env>.yml` — DNS, network, naming) is
       NOT detected here; roll those out with a manual dispatch or with
       always_run_terraform: true.
-    default: "false"
+      PREFER the manifest's `deploy.always_run_terraform`, which can differ per
+      environment. Leave this empty to use it; a value here overrides it.
+    default: ""
   verify_deploy:
     description: >-
       After deploying, check that the manifest's container apps and function
       apps exist and are healthy, failing the run when they are not. This is
       what makes a half-built stack or a crash-looping image loud instead of
       silently green. Set to "false" to skip.
-    default: "true"
+      PREFER the manifest's `deploy.verify`, which can differ per environment.
+      Leave this empty to use it; a value here overrides it.
+    default: ""
   verify_timeout:
-    description: Seconds to wait for every resource to become healthy.
-    default: "300"
+    description: >-
+      Seconds to wait for every resource to become healthy.
+      PREFER the manifest's `deploy.verify_timeout`, which can differ per
+      environment. Leave this empty to use it; a value here overrides it.
+    default: ""
 outputs:
   name:
     description: Resolved stack name (manifest name)
@@ -153,6 +160,23 @@ runs:
           echo "::error::environment '$ENV' is not declared in the manifest ($(echo "$ENVIRONMENTS" | jq -r 'join(", ")'))"
           exit 1
         fi
+
+    # Deploy policy comes from the manifest's `deploy:` block, which the
+    # per-environment overlay can vary — so a stack can verify strictly in prod
+    # and skip in dev. The three inputs above still win when non-empty, which
+    # is what keeps existing callers working.
+    - name: Resolve deploy policy
+      id: policy
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.env }}
+      run: >-
+        PYTHONPATH="${{ github.action_path }}/../../../engine"
+        python3 -m cloudapp deploy-policy
+        --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
+        --always-run-terraform "${{ inputs.always_run_terraform }}"
+        --verify "${{ inputs.verify_deploy }}"
+        --verify-timeout "${{ inputs.verify_timeout }}"
 
     - name: Generate control-repo App token
       id: token
@@ -434,7 +458,7 @@ runs:
       shell: bash
       env:
         PLAN_ONLY: ${{ inputs.plan_only }}
-        ALWAYS_RUN: ${{ inputs.always_run_terraform }}
+        ALWAYS_RUN: ${{ steps.policy.outputs.always_run_terraform }}
         MANIFEST_CHANGED: ${{ steps.detect.outputs.manifest_changed }}
         STATE_EXISTS: ${{ steps.state.outputs.exists }}
         CUSTOM_TF: ${{ steps.prepare-custom-tf.outputs.custom_tf }}
@@ -525,11 +549,11 @@ runs:
     # are healthy. Runs after BOTH lanes — and even when neither changed
     # anything — so a half-built stack cannot report success.
     - name: Verify deployment
-      if: ${{ inputs.plan_only == 'false' && inputs.verify_deploy != 'false' }}
+      if: ${{ inputs.plan_only == 'false' && steps.policy.outputs.verify != 'false' }}
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
-        VERIFY_TIMEOUT: ${{ inputs.verify_timeout }}
+        VERIFY_TIMEOUT: ${{ steps.policy.outputs.verify_timeout }}
       run: >-
         PYTHONPATH="${{ github.action_path }}/../../../engine"
         python3 -m cloudapp verify-deploy

@@ -280,3 +280,35 @@ def _sha(workspace):
         ["git", "-C", str(workspace.path), "rev-parse", "HEAD"],
         capture_output=True, text=True, check=True,
     ).stdout.strip()
+
+
+@pytest.mark.workspace(commits=["cloud-app.deploy.yml"])
+def test_manifest_deploy_policy_governs_verification(workspace):
+    """dev sets `deploy.verify: false`, so a revision stuck in Failed must not
+    fail the run -- proving the manifest value reached the step's `if:` with no
+    workflow input involved."""
+    workspace.scenario(revision_state={
+        CONTAINER_APP: {"prov": "Provisioned", "running": "Failed"},
+    })
+
+    workspace.act("deploy.yml", expect_success=True)
+
+    assert "containerapp revision show" not in workspace.az_commands()
+    assert "deploy policy" in workspace.log
+    assert "verify=False" in workspace.log
+
+
+@pytest.mark.workspace(commits=["cloud-app.deploy.yml"])
+def test_an_explicit_input_still_overrides_the_manifest(workspace):
+    """Backwards compatibility: a caller already passing verify_deploy in their
+    workflow keeps winning over the manifest."""
+    workspace.scenario(revision_state={
+        CONTAINER_APP: {"prov": "Provisioned", "running": "Failed"},
+    })
+
+    workspace.act(
+        "deploy.yml", {"verify_deploy": "true", "verify_timeout": "5"},
+        expect_success=False,
+    )
+
+    assert "runningState=Failed" in workspace.log

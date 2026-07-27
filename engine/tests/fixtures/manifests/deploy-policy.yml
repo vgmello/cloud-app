@@ -1,0 +1,19 @@
+# Deploy policy that differs per environment -- the reason it belongs in the
+# manifest rather than in the caller's workflow inputs.
+name: orders-api
+
+app:
+  port: 8080
+
+deploy:
+  verify: true
+  verify_timeout: 120
+
+environments:
+  dev:
+    deploy:
+      verify: false
+  prod:
+    deploy:
+      always_run_terraform: true
+      verify_timeout: 600

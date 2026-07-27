@@ -35,10 +35,12 @@ jobs:
           env: ${{ env.E2E_ENV || 'dev' }}
           manifest: ${{ env.E2E_MANIFEST || 'cloud-app.yml' }}
           plan_only: ${{ env.E2E_PLAN_ONLY || 'false' }}
-          always_run_terraform: ${{ env.E2E_ALWAYS_RUN || 'false' }}
-          verify_deploy: ${{ env.E2E_VERIFY_DEPLOY || 'true' }}
-          # Kept short so a failing scenario surfaces in seconds.
-          verify_timeout: ${{ env.E2E_VERIFY_TIMEOUT || '20' }}
+          # Left empty unless a scenario sets them, so the manifest's `deploy:`
+          # block decides -- passing a value here would override it, which is
+          # exactly what a real caller who omits these inputs does not do.
+          always_run_terraform: ${{ env.E2E_ALWAYS_RUN }}
+          verify_deploy: ${{ env.E2E_VERIFY_DEPLOY }}
+          verify_timeout: ${{ env.E2E_VERIFY_TIMEOUT }}
           app-id: "123456"
           app-private-key: "e2e-not-a-real-key"
           control-repo: cloud-app

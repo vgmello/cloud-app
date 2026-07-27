@@ -83,6 +83,9 @@
     "storage": {
       "$ref": "#/$defs/storage"
     },
+    "deploy": {
+      "$ref": "#/$defs/deploy"
+    },
     "environments": {
       "type": "object",
       "minProperties": 1,
@@ -93,7 +96,9 @@
         "$ref": "#/$defs/overlay"
       }
     },
-    "terraform": { "$ref": "#/$defs/custom_terraform" }
+    "terraform": {
+      "$ref": "#/$defs/custom_terraform"
+    }
   },
   "$defs": {
     "app": {
@@ -276,17 +281,65 @@
         }
       },
       "allOf": [
-        { "not": { "required": ["image", "docker"] } },
-        { "not": { "required": ["image", "package"] } },
-        { "not": { "required": ["docker", "package"] } },
-        { "if": { "required": ["package"] }, "then": { "required": ["runtime"] } },
         {
-          "if": { "required": ["runtime"] },
+          "not": {
+            "required": [
+              "image",
+              "docker"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "image",
+              "package"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "docker",
+              "package"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "package"
+            ]
+          },
+          "then": {
+            "required": [
+              "runtime"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "runtime"
+            ]
+          },
           "then": {
             "oneOf": [
-              { "required": ["image"] },
-              { "required": ["docker"] },
-              { "required": ["package"] }
+              {
+                "required": [
+                  "image"
+                ]
+              },
+              {
+                "required": [
+                  "docker"
+                ]
+              },
+              {
+                "required": [
+                  "package"
+                ]
+              }
             ]
           }
         }
@@ -408,7 +461,12 @@
         "storage": {
           "$ref": "#/$defs/storage"
         },
-        "terraform": { "$ref": "#/$defs/custom_terraform" }
+        "deploy": {
+          "$ref": "#/$defs/deploy"
+        },
+        "terraform": {
+          "$ref": "#/$defs/custom_terraform"
+        }
       }
     },
     "ingress": {
@@ -497,29 +555,84 @@
     "provider_ref": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "source", "version"],
+      "required": [
+        "name",
+        "source",
+        "version"
+      ],
       "properties": {
         "name": {
           "type": "string",
-          "enum": ["random", "null", "tls", "time", "local", "external", "azuread", "azapi"]
+          "enum": [
+            "random",
+            "null",
+            "tls",
+            "time",
+            "local",
+            "external",
+            "azuread",
+            "azapi"
+          ]
         },
-        "source": { "type": "string", "minLength": 1 },
-        "version": { "type": "string", "minLength": 1 }
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "custom_terraform": {
       "oneOf": [
-        { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.).+$" },
+        {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\.\\.).+$"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["dir"],
+          "required": [
+            "dir"
+          ],
           "properties": {
-            "dir": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.).+$" },
-            "providers": { "type": "array", "items": { "$ref": "#/$defs/provider_ref" } }
+            "dir": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*\\.\\.).+$"
+            },
+            "providers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/provider_ref"
+              }
+            }
           }
         }
       ]
+    },
+    "deploy": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Deploy policy for this stack: how the action should behave when shipping it. Per-environment overridable, which is the point -- these were workflow inputs, so they could not vary between dev and prod.",
+      "properties": {
+        "always_run_terraform": {
+          "type": "boolean",
+          "description": "Run Terraform on every deploy. When false, an unchanged manifest skips Terraform and the new image is rolled directly onto the existing container apps and functions."
+        },
+        "verify": {
+          "type": "boolean",
+          "description": "After deploying, check that the declared container apps and function apps exist and are healthy, failing the run when they are not."
+        },
+        "verify_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600,
+          "description": "Seconds to wait for every resource to become healthy."
+        }
+      }
     }
   },
   "allOf": [
