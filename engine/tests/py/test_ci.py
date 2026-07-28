@@ -8,7 +8,7 @@ environment cannot change what they exercise.
 import pytest
 
 from cloudapp import ci
-from cloudapp.ci import base
+from cloudapp.ci import base, github
 
 PROTOCOL = ("write_outputs", "append_summary", "notice", "warning", "error")
 
@@ -111,3 +111,52 @@ def test_base_diagnostics_split_across_streams(capsys):
     captured = capsys.readouterr()
     assert captured.out == "notice: n\n"
     assert captured.err == "warning: w\nerror: e\n"
+
+
+def test_detect_recognises_github():
+    assert ci.detect({"GITHUB_ACTIONS": "true"}) is github
+
+
+def test_explicit_override_beats_github_autodetection():
+    assert ci.detect({"CLOUDAPP_CI": "base", "GITHUB_ACTIONS": "true"}) is base
+
+
+def test_github_appends_outputs_to_github_output(tmp_path, monkeypatch):
+    gh = tmp_path / "gh-output"
+    gh.write_text("existing=1\n")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(gh))
+    github.write_outputs({"image-tags": "{}"})
+    assert gh.read_text() == "existing=1\nimage-tags={}\n"
+
+
+def test_github_writes_both_the_fallback_file_and_github_output(tmp_path, monkeypatch):
+    gh = tmp_path / "gh-output"
+    fallback = tmp_path / "outputs.txt"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(gh))
+    github.write_outputs({"name": "orders"}, fallback_file=fallback)
+    assert gh.read_text() == "name=orders\n"
+    assert fallback.read_text() == "name=orders\n"
+
+
+def test_github_outputs_are_a_no_op_off_ci(monkeypatch):
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    github.write_outputs({"name": "orders"})
+
+
+def test_github_appends_to_the_step_summary(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    github.append_summary("### plan")
+    assert summary.read_text() == "### plan\n"
+
+
+def test_github_summary_is_a_no_op_off_ci(monkeypatch):
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    github.append_summary("### plan")
+
+
+def test_github_annotations_use_the_workflow_command_syntax(capsys):
+    github.notice("n")
+    github.warning("w")
+    github.error("e")
+    assert capsys.readouterr().out == "::notice::n\n::warning::w\n::error::e\n"
