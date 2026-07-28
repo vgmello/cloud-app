@@ -8,7 +8,7 @@ environment cannot change what they exercise.
 import pytest
 
 from cloudapp import ci
-from cloudapp.ci import base, github
+from cloudapp.ci import base, github, gitlab
 
 PROTOCOL = ("write_outputs", "append_summary", "notice", "warning", "error")
 
@@ -168,3 +168,67 @@ def test_github_annotations_use_the_workflow_command_syntax(capsys):
     github.warning("w")
     github.error("e")
     assert capsys.readouterr().out == "::notice::n\n::warning::w\n::error::e\n"
+
+
+def test_detect_recognises_gitlab():
+    assert ci.detect({"GITLAB_CI": "true"}) is gitlab
+
+
+def test_explicit_override_beats_autodetection():
+    assert ci.detect({"CLOUDAPP_CI": "gitlab", "GITHUB_ACTIONS": "true"}) is gitlab
+
+
+@pytest.mark.parametrize(
+    ("engine_key", "expected"),
+    [
+        ("image-tags", "IMAGE_TAGS"),
+        ("secret-count", "SECRET_COUNT"),
+        ("vault-exists", "VAULT_EXISTS"),
+        ("custom_tf", "CUSTOM_TF"),
+        ("name", "NAME"),
+    ],
+)
+def test_hyphenated_keys_become_valid_dotenv_identifiers(engine_key, expected):
+    assert gitlab.dotenv_key(engine_key) == expected
+
+
+def test_gitlab_appends_normalised_outputs_to_the_dotenv_report(tmp_path, monkeypatch):
+    dotenv = tmp_path / "cloudapp.env"
+    monkeypatch.setenv("CLOUDAPP_DOTENV", str(dotenv))
+    gitlab.write_outputs({"image-tags": "{}", "vault-exists": "true"})
+    assert dotenv.read_text() == "IMAGE_TAGS={}\nVAULT_EXISTS=true\n"
+
+
+def test_gitlab_dotenv_appends_rather_than_truncating(tmp_path, monkeypatch):
+    dotenv = tmp_path / "cloudapp.env"
+    dotenv.write_text("EXISTING=1\n")
+    monkeypatch.setenv("CLOUDAPP_DOTENV", str(dotenv))
+    gitlab.write_outputs({"name": "orders"})
+    assert dotenv.read_text() == "EXISTING=1\nNAME=orders\n"
+
+
+def test_gitlab_fallback_file_keeps_the_engine_spelling(tmp_path, monkeypatch):
+    monkeypatch.delenv("CLOUDAPP_DOTENV", raising=False)
+    fallback = tmp_path / "outputs.txt"
+    gitlab.write_outputs({"image-tags": "{}"}, fallback_file=fallback)
+    assert fallback.read_text() == "image-tags={}\n"
+
+
+def test_gitlab_outputs_are_a_no_op_without_a_dotenv_target(tmp_path, monkeypatch):
+    monkeypatch.delenv("CLOUDAPP_DOTENV", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    gitlab.write_outputs({"name": "orders"})
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_gitlab_summary_goes_to_the_log_and_never_raises(capsys):
+    gitlab.append_summary("### plan")
+    assert capsys.readouterr().out == "### plan\n"
+
+
+@pytest.mark.parametrize("impl", [base, github, gitlab], ids=["base", "github", "gitlab"])
+def test_every_provider_implements_the_protocol(impl):
+    for name in PROTOCOL:
+        assert callable(getattr(impl, name, None)), f"{impl.__name__} is missing {name}"

@@ -11,9 +11,9 @@ resolved on first use rather than at import, so a test can substitute one with
 
 import os
 
-from . import base, github
+from . import base, github, gitlab
 
-PROVIDERS = {"base": base, "github": github}
+PROVIDERS = {"base": base, "github": github, "gitlab": gitlab}
 
 _impl = None
 
@@ -21,7 +21,11 @@ _impl = None
 def detect(env=None):
     """The provider implied by ``env``. Explicit ``CLOUDAPP_CI`` wins."""
     env = os.environ if env is None else env
-    name = env.get("CLOUDAPP_CI") or ("github" if env.get("GITHUB_ACTIONS") else "base")
+    name = env.get("CLOUDAPP_CI") or (
+        "github" if env.get("GITHUB_ACTIONS")
+        else "gitlab" if env.get("GITLAB_CI")
+        else "base"
+    )
     try:
         return PROVIDERS[name]
     except KeyError:
