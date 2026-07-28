@@ -291,7 +291,10 @@ def cmd_validate_lock(args):
     registered_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
     lock = registry.new_lock(args.stack_name, args.environment, args.caller_repo, registered_at)
     registry_path.write_text(yaml.safe_dump(lock, default_flow_style=False))
-    registry.persist_lock(runner.run, args.central_root, args.environment, args.stack_name, args.caller_repo)
+    registry.persist_lock(
+        runner.run, args.central_root, args.environment, args.stack_name, args.caller_repo,
+        bot_name=args.bot_name, bot_email=args.bot_email, branch=args.registry_branch,
+    )
     ci.notice(f"Stack lock created successfully at '{registry_path}'.")
 
 
@@ -413,6 +416,9 @@ def main(argv=None):
     p.add_argument("--caller-repo", required=True)
     p.add_argument("--caller-root", default="caller-workspace")
     p.add_argument("--central-root", default="central-workspace")
+    p.add_argument("--bot-name", default="github-actions[bot]")
+    p.add_argument("--bot-email", default="github-actions[bot]@users.noreply.github.com")
+    p.add_argument("--registry-branch", default="main")
     p.set_defaults(func=cmd_validate_lock)
 
     args = parser.parse_args(argv)

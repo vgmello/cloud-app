@@ -176,3 +176,25 @@ def test_persist_lock_fail_closed_when_push_rejected():
     fake = FakeRunner(results=[(["git", "push"], FakeResult(returncode=1, stderr="rejected"))])
     with pytest.raises(registry.RegistryError, match="not silently lost|persist"):
         registry.persist_lock(fake, "central-workspace", "dev", "orders", "acme/orders")
+
+
+def test_persist_lock_defaults_to_the_github_actions_bot():
+    runner = FakeRunner()
+    registry.persist_lock(runner, "central-workspace", "prod", "orders", "acme/orders")
+    assert ["git", "config", "user.name", "github-actions[bot]"] in runner.calls
+    assert ["git", "push", "origin", "HEAD:main"] in runner.calls
+
+
+def test_persist_lock_accepts_a_different_bot_and_branch():
+    runner = FakeRunner()
+    registry.persist_lock(
+        runner, "central-workspace", "prod", "orders", "acme/orders",
+        bot_name="cloud-app-bot",
+        bot_email="cloud-app-bot@example.com",
+        remote="upstream",
+        branch="trunk",
+    )
+    assert ["git", "config", "user.name", "cloud-app-bot"] in runner.calls
+    assert ["git", "config", "user.email", "cloud-app-bot@example.com"] in runner.calls
+    assert ["git", "pull", "--rebase", "--autostash", "upstream", "trunk"] in runner.calls
+    assert ["git", "push", "upstream", "HEAD:trunk"] in runner.calls

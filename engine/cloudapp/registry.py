@@ -80,12 +80,19 @@ def new_lock(stack_name, env, caller_repo, registered_at):
     }
 
 
-def persist_lock(runner, cwd, env, stack_name, caller_repo):
+def persist_lock(runner, cwd, env, stack_name, caller_repo, *,
+                 bot_name="github-actions[bot]",
+                 bot_email="github-actions[bot]@users.noreply.github.com",
+                 remote="origin", branch="main"):
     """Commit and push the new lock back to the central repo. Fail-closed: if
     any git step fails (e.g. a push race), the lock was not persisted, so we
     raise instead of letting the deploy proceed with an unregistered stack.
     Arg-lists (never a shell string) keep the caller-controlled name/repo from
     being interpolated into a command.
+
+    The committer identity and push target are parameters because the control
+    plane may be hosted anywhere; the defaults reproduce the GitHub-hosted
+    values this ran with before they were configurable.
 
     ``--autostash`` on the rebase: `terraform init` on the runner can leave
     the tree dirty (e.g. appending a platform hash to a tracked provider lock
@@ -96,12 +103,12 @@ def persist_lock(runner, cwd, env, stack_name, caller_repo):
         runner(["git", *args], cwd=cwd)
 
     try:
-        git("config", "user.name", "github-actions[bot]")
-        git("config", "user.email", "github-actions[bot]@users.noreply.github.com")
+        git("config", "user.name", bot_name)
+        git("config", "user.email", bot_email)
         git("add", f"registries/{env}/{stack_name}.yml")
         git("commit", "-m", f"lock(registry): auto-register {stack_name} to {caller_repo} [{env}]")
-        git("pull", "--rebase", "--autostash", "origin", "main")
-        git("push", "origin", "HEAD:main")
+        git("pull", "--rebase", "--autostash", remote, branch)
+        git("push", remote, f"HEAD:{branch}")
     except subprocess.CalledProcessError as exc:
         raise RegistryError(
             f"Failed to persist stack lock for '{stack_name}' ({exc}); "

@@ -122,7 +122,7 @@ def sync(tool, vault, all_secrets, run, require_vault=False, fetch_ip=_runner.fe
 
     missing = [s["name"] for s in secrets if s["name"] not in all_secrets]
     if missing:
-        raise SyncError("missing GitHub environment secrets: " + ", ".join(missing))
+        raise SyncError("missing environment secrets: " + ", ".join(missing))
 
     if not _vault_exists(run, vault, require_vault):
         return {**outputs, "vault-exists": "false", "secrets-changed": "false"}
