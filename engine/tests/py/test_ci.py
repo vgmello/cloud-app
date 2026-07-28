@@ -138,9 +138,13 @@ def test_github_writes_both_the_fallback_file_and_github_output(tmp_path, monkey
     assert fallback.read_text() == "name=orders\n"
 
 
-def test_github_outputs_are_a_no_op_off_ci(monkeypatch):
+def test_github_outputs_are_a_no_op_off_ci(tmp_path, monkeypatch):
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    monkeypatch.chdir(tmp_path)
+
     github.write_outputs({"name": "orders"})
+
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_github_appends_to_the_step_summary(tmp_path, monkeypatch):
@@ -150,9 +154,13 @@ def test_github_appends_to_the_step_summary(tmp_path, monkeypatch):
     assert summary.read_text() == "### plan\n"
 
 
-def test_github_summary_is_a_no_op_off_ci(monkeypatch):
+def test_github_summary_is_a_no_op_off_ci(tmp_path, monkeypatch):
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    monkeypatch.chdir(tmp_path)
+
     github.append_summary("### plan")
+
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_github_annotations_use_the_workflow_command_syntax(capsys):
