@@ -76,6 +76,17 @@ def test_use_none_restores_autodetection(monkeypatch):
     assert ci.detect() is base
 
 
+def test_dispatch_resolves_the_provider_on_first_use(monkeypatch, capsys):
+    monkeypatch.delenv("CLOUDAPP_CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("GITLAB_CI", raising=False)
+    ci.use(None)
+
+    ci.notice("x")
+
+    assert capsys.readouterr().out == "notice: x\n"
+
+
 def test_base_writes_outputs_to_the_fallback_file(tmp_path):
     out = tmp_path / "outputs.txt"
     base.write_outputs({"name": "orders", "docker": "true"}, fallback_file=out)
