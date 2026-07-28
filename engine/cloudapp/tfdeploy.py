@@ -7,7 +7,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import backend, builds, gha, runner
+from . import backend, builds, ci, runner
 from .yamlcompat import load_yaml
 
 PLAN_FILE = "tfplan"
@@ -90,7 +90,7 @@ def _apply_with_retry(run, tf, env, replan, sleep):
     if not _is_transient_authz(output):
         print(output)
         raise DeployError(f"terraform apply failed for environment '{env}'")
-    gha.warning("apply hit a transient authorization error; retrying once in 30s (RBAC propagation)")
+    ci.warning("apply hit a transient authorization error; retrying once in 30s (RBAC propagation)")
     sleep(30)
     replan()
     _terraform(run, tf, apply_args, env)  # surfaces output and raises DeployError if it fails again
@@ -111,7 +111,7 @@ def deploy(tf_dir, tfvars_file, backend_lines, tags, runner_ip, env, plan_only,
     replan()
     show = _terraform(run, tf, ["show", "-no-color", PLAN_FILE], env, capture=True)
     body = "\n".join(show.stdout.splitlines()[:200])
-    gha.append_summary(
+    ci.append_summary(
         f"<details><summary>terraform plan ({env})</summary>\n\n```\n{body}\n```\n</details>"
     )
 

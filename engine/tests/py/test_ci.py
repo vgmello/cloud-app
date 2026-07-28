@@ -5,6 +5,8 @@ package-level functions, so that a real GITHUB_ACTIONS in the ambient
 environment cannot change what they exercise.
 """
 
+import re
+
 import pytest
 
 from cloudapp import ci
@@ -232,3 +234,12 @@ def test_gitlab_summary_goes_to_the_log_and_never_raises(capsys):
 def test_every_provider_implements_the_protocol(impl):
     for name in PROTOCOL:
         assert callable(getattr(impl, name, None)), f"{impl.__name__} is missing {name}"
+
+
+def test_no_engine_module_references_the_retired_gha_module(repo):
+    offenders = sorted(
+        path.name
+        for path in (repo / "cloudapp").rglob("*.py")
+        if re.search(r"\bgha\b", path.read_text())
+    )
+    assert offenders == []

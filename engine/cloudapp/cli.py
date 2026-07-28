@@ -14,10 +14,10 @@ from . import (
     backend,
     bootcache,
     builds,
+    ci,
     customtf,
     dockerbuild,
     funcdeploy,
-    gha,
     identity,
     manifest,
     registry,
@@ -89,7 +89,7 @@ def cmd_parse_manifest(args):
             stale.unlink()
     for env, tool in tools.items():
         _write_json(out / f"tool.{env}.json", tool)
-    gha.write_outputs(
+    ci.write_outputs(
         {
             "name": name,
             "environments": json.dumps(environments, separators=(",", ":")),
@@ -110,8 +110,8 @@ def cmd_prepare_custom_tf(args):
     tool = _load_json(args.tool_json)
     copied = customtf.prepare(tool, args.app_root, args.custom_dir)
     if copied:
-        gha.notice(f"staged caller terraform: {', '.join(copied)}")
-    gha.write_outputs({"custom_tf": "true" if customtf.declares_custom_tf(tool) else "false"})
+        ci.notice(f"staged caller terraform: {', '.join(copied)}")
+    ci.write_outputs({"custom_tf": "true" if customtf.declares_custom_tf(tool) else "false"})
 
 
 def cmd_enumerate_builds(args):
@@ -122,7 +122,7 @@ def cmd_enumerate_builds(args):
 def cmd_docker_build(args):
     plan = builds.enumerate_builds(_load_json(args.tool_json), args.tool_name, args.registry, args.git_sha)
     dockerbuild.build_and_push(plan, args.registry, runner.run)
-    gha.write_outputs({"image-tags": json.dumps(plan["tags"], separators=(",", ":"))})
+    ci.write_outputs({"image-tags": json.dumps(plan["tags"], separators=(",", ":"))})
 
 
 def cmd_sync_secrets(args):
@@ -135,12 +135,12 @@ def cmd_sync_secrets(args):
         runner.run,
         require_vault=args.require_vault,
     )
-    gha.write_outputs(outputs)
+    ci.write_outputs(outputs)
 
 
 def cmd_state_exists(args):
     exists = backend.state_exists(args.platform_file, args.tool_name, args.environment, runner.run)
-    gha.write_outputs({"exists": "true" if exists else "false"})
+    ci.write_outputs({"exists": "true" if exists else "false"})
 
 
 def cmd_rotate_images(args):
@@ -172,7 +172,7 @@ def cmd_terraform_deploy(args):
         args.environment, args.plan_only, targets=args.targets.split(),
         stack=args.stack,
     )
-    gha.write_outputs({"summary": summary})
+    ci.write_outputs({"summary": summary})
 
 
 def cmd_deploy_functions(args):
@@ -182,7 +182,7 @@ def cmd_deploy_functions(args):
     backend_lines = backend.render(args.platform_file, args.tool_name, args.environment, stack="main")
     with tempfile.TemporaryDirectory(prefix="funcpkg-") as workdir:
         deployed = funcdeploy.deploy(tool, args.terraform_dir, backend_lines, workdir, runner.run)
-    gha.write_outputs({"deployed": json.dumps(deployed, separators=(",", ":"))})
+    ci.write_outputs({"deployed": json.dumps(deployed, separators=(",", ":"))})
 
 
 def cmd_login_plan(args):
@@ -242,7 +242,7 @@ def cmd_bootstrap_cache(args):
     except (OSError, ValueError) as exc:
         # ValueError covers UnicodeDecodeError from a non-UTF-8 file: still a
         # miss, never a failed deploy.
-        gha.warning(f"ignoring unreadable bootstrap fingerprint: {exc}")
+        ci.warning(f"ignoring unreadable bootstrap fingerprint: {exc}")
         local = ""
     cache = None
     cache_path = Path(args.cache_file)
@@ -250,11 +250,11 @@ def cmd_bootstrap_cache(args):
         try:
             cache = load_yaml(cache_path.read_text())
         except Exception as exc:  # a malformed cache is a miss, never a failure
-            gha.warning(f"ignoring unreadable bootstrap cache: {exc}")
+            ci.warning(f"ignoring unreadable bootstrap cache: {exc}")
     hit = bootcache.use_cache(local, cache, args.stack_name, args.environment)
     outputs = {"use_cache": "true" if hit else "false"}
     outputs.update(bootcache.cache_values(cache) if hit else bootcache.cache_values(None))
-    gha.write_outputs(outputs)
+    ci.write_outputs(outputs)
     print(f"bootstrap cache: {'hit' if hit else 'miss'}")
 
 
@@ -268,9 +268,9 @@ def cmd_validate_lock(args):
         )
     declared = _load_platform(stack_path).get("name")
     if not declared:
-        gha.warning(f"No 'name' declared in '{args.stack_file}'. Using input name '{args.stack_name}'.")
+        ci.warning(f"No 'name' declared in '{args.stack_file}'. Using input name '{args.stack_name}'.")
     name = registry.reconcile_stack_name(declared, args.stack_name)
-    gha.notice(f"Stack file '{args.stack_file}' verified (name: '{name}').")
+    ci.notice(f"Stack file '{args.stack_file}' verified (name: '{name}').")
 
     registry_dir = Path(args.central_root) / "registries" / args.environment
     registry_dir.mkdir(parents=True, exist_ok=True)
@@ -284,15 +284,15 @@ def cmd_validate_lock(args):
                 f"deploy stack '{args.stack_name}' in '{args.environment}'. "
                 f"Authorized: {lock.get('allowed_repos') or []}"
             )
-        gha.notice(f"Repository '{args.caller_repo}' authorized for stack '{args.stack_name}'.")
+        ci.notice(f"Repository '{args.caller_repo}' authorized for stack '{args.stack_name}'.")
         return
 
-    gha.notice(f"New stack detected. Registering lock for '{args.stack_name}' to '{args.caller_repo}'.")
+    ci.notice(f"New stack detected. Registering lock for '{args.stack_name}' to '{args.caller_repo}'.")
     registered_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
     lock = registry.new_lock(args.stack_name, args.environment, args.caller_repo, registered_at)
     registry_path.write_text(yaml.safe_dump(lock, default_flow_style=False))
     registry.persist_lock(runner.run, args.central_root, args.environment, args.stack_name, args.caller_repo)
-    gha.notice(f"Stack lock created successfully at '{registry_path}'.")
+    ci.notice(f"Stack lock created successfully at '{registry_path}'.")
 
 
 def main(argv=None):
@@ -422,7 +422,7 @@ def main(argv=None):
             tfdeploy.DeployError, backend.BackendError, rotate.RotateError,
             customtf.CustomTfError, verify.VerifyError,
             registry.RegistryError, ValueError) as exc:
-        gha.error(str(exc))
+        ci.error(str(exc))
         return 1
     except subprocess.CalledProcessError as exc:
         # docker/az/terraform invocations that run with check=True raise this.
@@ -434,7 +434,7 @@ def main(argv=None):
         for stream in (exc.stdout, exc.stderr):
             if stream:
                 print(stream if isinstance(stream, str) else stream.decode(errors="replace"))
-        gha.error(f"command failed (exit {exc.returncode}): {_redact_cmd(exc.cmd)}")
+        ci.error(f"command failed (exit {exc.returncode}): {_redact_cmd(exc.cmd)}")
         return 1
     return 0
 

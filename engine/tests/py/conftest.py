@@ -19,6 +19,23 @@ def repo():
     return REPO
 
 
+@pytest.fixture(autouse=True)
+def pin_ci_provider():
+    """The suite asserts GitHub-shaped output (``::error::``, GITHUB_OUTPUT).
+    Before the ci package existed, gha.py made that shape unconditional, so
+    tests never had to think about which provider was active. Pin the
+    provider here so results stay deterministic regardless of whether the
+    run happens to be inside a CI container — a suite that passes on a
+    GitHub runner and fails on a laptop is worse than either outcome alone.
+    """
+    from cloudapp import ci
+    from cloudapp.ci import github
+
+    ci.use(github)
+    yield
+    ci.use(None)
+
+
 def load_manifest(name):
     return yaml.safe_load((FIXTURES / f"{name}.yml").read_text())
 

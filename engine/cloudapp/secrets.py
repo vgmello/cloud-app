@@ -5,7 +5,7 @@ import json
 import re
 import time
 
-from . import gha
+from . import ci
 from . import runner as _runner
 
 NOT_FOUND = re.compile(r"ResourceNotFound|was not found|could not be found", re.IGNORECASE)
@@ -57,7 +57,7 @@ def _vault_exists(run, vault, require_vault):
     if NOT_FOUND.search(show.stderr or ""):
         if require_vault:
             raise SyncError(f"key vault {vault} still missing after the targeted apply")
-        gha.notice(f"key vault {vault} not created yet; deferring secret sync")
+        ci.notice(f"key vault {vault} not created yet; deferring secret sync")
         return False
     raise SyncError(f"az keyvault show failed for a reason other than not-found:\n{show.stderr}")
 
@@ -74,7 +74,7 @@ def _allowlist_runner_ip(run, vault, fetch_ip):
         check=False, capture=True,
     )
     if rule.returncode != 0:
-        gha.warning(f"could not allowlist runner IP on {vault}; secret writes may hit the vault firewall")
+        ci.warning(f"could not allowlist runner IP on {vault}; secret writes may hit the vault firewall")
 
 
 def _read_secret(run, vault, kv_name):
@@ -98,7 +98,7 @@ def _set_secret(run, vault, kv_name, value, sleep):
         if result.returncode == 0:
             return
         if attempt == 1:
-            gha.warning(f"secret set failed for {kv_name}; retrying in 15s (RBAC propagation)")
+            ci.warning(f"secret set failed for {kv_name}; retrying in 15s (RBAC propagation)")
             sleep(15)
     raise SyncError(f"failed to set secret {kv_name}:\n{result.stderr}")
 

@@ -31,7 +31,7 @@ import hashlib
 import os
 import re
 
-from cloudapp import gha
+from cloudapp import ci
 
 # The bootstrap stack plus the config its tfvars derive from, plus the two
 # out-of-tree inputs that change what a bootstrap produces without touching
@@ -126,7 +126,7 @@ def _covered_files(root, subpaths):
                 yield os.path.relpath(base, root), base
             continue
         if not os.path.isdir(base):
-            gha.warning(f"bootcache: COVERED entry '{subpath}' is neither a file nor a directory")
+            ci.warning(f"bootcache: COVERED entry '{subpath}' is neither a file nor a directory")
             continue
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = sorted(d for d in dirnames if not _skip_dir(root, dirpath, d))
