@@ -299,3 +299,10 @@ def test_the_schema_ships_inside_the_package():
     package_root = Path(manifest.__file__).parent
     assert manifest.SCHEMA_PATH.is_file()
     assert manifest.SCHEMA_PATH.is_relative_to(package_root)
+
+
+def test_package_data_covers_every_non_python_file_the_engine_reads():
+    """Schema and defaults must be declared as package data, or an installed
+    engine validates nothing and resolves no defaults."""
+    pyproject = (Path(manifest.__file__).parents[1] / "pyproject.toml").read_text()
+    assert 'cloudapp = ["defaults/*.yml", "schema/*.json"]' in pyproject
