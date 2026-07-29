@@ -9,7 +9,7 @@ import { DOCS, REPO_URL, SAMPLES, sample } from "../src/content";
 const schema = JSON.parse(
   readFileSync(
     fileURLToPath(
-      new URL("../../terraform/schema/cloud-app.schema.json", import.meta.url),
+      new URL("../../engine/cloudapp/schema/cloud-app.schema.json", import.meta.url),
     ),
     "utf8",
   ),

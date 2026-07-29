@@ -13,8 +13,7 @@ from jsonschema import Draft202012Validator
 from .yamlcompat import load_yaml as _load_yaml_12
 
 _PKG = Path(__file__).parent
-# engine/cloudapp -> repo root; terraform/ lives at the repo root, not in engine/
-SCHEMA_PATH = _PKG.parents[1] / "terraform" / "schema" / "cloud-app.schema.json"
+SCHEMA_PATH = _PKG / "schema" / "cloud-app.schema.json"
 DEFAULTS_DIR = _PKG / "defaults"
 
 CONTAINER_DEFAULTS = {"cpu": 0.5, "memory": "1Gi", "env": {}, "secrets": []}

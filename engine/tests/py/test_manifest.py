@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from conftest import FIXTURES, load_golden, load_manifest
 
@@ -290,3 +292,10 @@ def test_normalize_terraform_object_keeps_providers():
 def test_normalize_without_terraform_leaves_key_absent():
     cfg = manifest.normalize({"name": "orders"})
     assert "terraform" not in cfg
+
+
+def test_the_schema_ships_inside_the_package():
+    """The engine must not reach outside its own directory to validate a manifest."""
+    package_root = Path(manifest.__file__).parent
+    assert manifest.SCHEMA_PATH.is_file()
+    assert manifest.SCHEMA_PATH.is_relative_to(package_root)

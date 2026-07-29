@@ -59,15 +59,15 @@ The trust & identity model — the split topology (control bootstraps, caller de
 
 ## What's in this repo
 
-| Path                                     | What                                                                                                                                          |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `terraform/schema/cloud-app.schema.json` | Manifest JSON Schema                                                                                                                          |
-| `engine/cloudapp/`                       | Python package with all action logic (validate, merge, normalize, build, secrets, deploy)                                                     |
-| `.github/actions/cloud-app/`             | Composite deploy action (clients invoke this as a step in their own gated job)                                                                |
-| `.github/actions/deploy-stack/`          | Control-side composite action (bootstraps the RG + plan/apply identities for a stack)                                                         |
-| `terraform/azure/`                       | Root module + compute (`container-app`, `function`, `static-site`) and shared (`keyvault`, `database`, `storage`, `private-endpoint`) modules |
-| `environments/`                          | Per-environment platform config (subscription, VNet, DNS zones, ACR, state, deploy SP)                                                        |
-| `docs/superpowers/specs/`                | Design spec                                                                                                                                   |
+| Path                                           | What                                                                                                                                          |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engine/cloudapp/schema/cloud-app.schema.json` | Manifest JSON Schema                                                                                                                          |
+| `engine/cloudapp/`                             | Python package with all action logic (validate, merge, normalize, build, secrets, deploy)                                                     |
+| `.github/actions/cloud-app/`                   | Composite deploy action (clients invoke this as a step in their own gated job)                                                                |
+| `.github/actions/deploy-stack/`                | Control-side composite action (bootstraps the RG + plan/apply identities for a stack)                                                         |
+| `terraform/azure/`                             | Root module + compute (`container-app`, `function`, `static-site`) and shared (`keyvault`, `database`, `storage`, `private-endpoint`) modules |
+| `environments/`                                | Per-environment platform config (subscription, VNet, DNS zones, ACR, state, deploy SP)                                                        |
+| `docs/superpowers/specs/`                      | Design spec                                                                                                                                   |
 
 ## Manifest at a glance
 
