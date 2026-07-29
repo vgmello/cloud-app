@@ -18,7 +18,7 @@ published page is static and readable without JavaScript. The modules under
 `src/behaviors/` only enhance that markup.
 
 Every YAML sample in `src/content.ts` is validated against
-`terraform/schema/cloud-app.schema.json` by `tests/content.test.ts`. If you edit
+`engine/cloudapp/schema/cloud-app.schema.json` by `tests/content.test.ts`. If you edit
 a sample and the test fails, the sample is wrong — not the test.
 
 `index.html` is generated. Do not commit it or edit it directly; edit
