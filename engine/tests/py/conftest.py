@@ -20,17 +20,34 @@ def repo():
 
 
 @pytest.fixture(autouse=True)
-def pin_ci_provider():
+def pin_ci_provider(monkeypatch):
     """The suite asserts GitHub-shaped output (``::error::``, GITHUB_OUTPUT).
     Before the ci package existed, gha.py made that shape unconditional, so
     tests never had to think about which provider was active. Pin the
     provider here so results stay deterministic regardless of whether the
     run happens to be inside a CI container — a suite that passes on a
     GitHub runner and fails on a laptop is worse than either outcome alone.
+
+    Also scrub the real I/O targets these providers write to. Without this,
+    running the suite on an actual GitHub (or GitLab) runner would pin the
+    github provider and then have it append fixture data straight into the
+    runner's real GITHUB_OUTPUT/GITHUB_STEP_SUMMARY (or CLOUDAPP_DOTENV),
+    polluting the job's real outputs and summary. Tests that need one of
+    these set it via their own ``monkeypatch`` afterward, so this scrub
+    never shadows a deliberate test setting.
+
+    Also pin via the ``CLOUDAPP_CI`` env var, not only ``ci.use()``: cli.main()
+    resolves and re-pins the provider itself (from the real environment) on
+    every invocation, so a CLI-path test would otherwise see its provider
+    silently reset out from under the ``ci.use(github)`` pin the moment it
+    called ``cli.main()``.
     """
     from cloudapp import ci
     from cloudapp.ci import github
 
+    for var in ("GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY", "CLOUDAPP_DOTENV"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("CLOUDAPP_CI", "github")
     ci.use(github)
     yield
     ci.use(None)

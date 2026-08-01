@@ -79,6 +79,33 @@ def test_invalid_manifest_returns_nonzero_and_writes_nothing(tmp_path, monkeypat
     assert not (out / "tool.dev.json").exists()
 
 
+def test_bad_ci_provider_returns_2_with_provider_name_in_stderr(tmp_path, monkeypatch, capsys):
+    """A misspelled CLOUDAPP_CI must fail fast with a clean exit code before
+    any command runs, not surface as an unrelated traceback later."""
+    monkeypatch.setenv("CLOUDAPP_CI", "gitab")
+    rc = cli.main([
+        "parse-manifest", "--manifest", str(FIXTURES / "minimal.yml"),
+        "--output-dir", str(tmp_path), "--app-root", str(tmp_path),
+    ])
+    assert rc == 2
+    assert "gitab" in capsys.readouterr().err
+
+
+def test_bad_ci_provider_reports_2_not_a_traceback_for_an_unrelated_failure(tmp_path, monkeypatch, capsys):
+    """Regression for the original bug: with CLOUDAPP_CI already broken, a
+    command that would otherwise fail for a completely different reason
+    (an invalid manifest) must still report exit code 2 — not have the
+    original diagnostic destroyed by ci.error() re-raising from inside the
+    except handler."""
+    monkeypatch.setenv("CLOUDAPP_CI", "gitab")
+    rc = cli.main([
+        "parse-manifest", "--manifest", str(FIXTURES / "invalid-legacy-type.yml"),
+        "--output-dir", str(tmp_path), "--app-root", str(tmp_path),
+    ])
+    assert rc == 2
+    assert "gitab" in capsys.readouterr().err
+
+
 def test_parse_manifest_fails_fast_on_bad_terraform_dir(tmp_path, monkeypatch, capsys):
     """Caller-terraform validation runs during parse-manifest, before the
     bootstrap creates the RG/identities — a typo'd dir must fail here, not

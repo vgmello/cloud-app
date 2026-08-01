@@ -1,8 +1,7 @@
 # Default owner for everything in this repo.
 * @vgmello
 
-# The manifest contract and its consumers change together — extra scrutiny.
-/terraform/schema/ @vgmello
+# The manifest contract (schema) and its consumers change together — extra scrutiny.
 /engine/cloudapp/ @vgmello
 /.github/ @vgmello
 

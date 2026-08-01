@@ -25,7 +25,7 @@ def setup_workspace(tmp, *, manifest_name="orders", stack_file="cloud-app.yml",
     return caller
 
 
-def invoke(tmp, environment, stack_file, stack_name, caller_repo):
+def invoke(tmp, environment, stack_file, stack_name, caller_repo, *, extra_args=None):
     return cli.main([
         "validate-lock",
         "--environment", environment,
@@ -34,6 +34,7 @@ def invoke(tmp, environment, stack_file, stack_name, caller_repo):
         "--caller-repo", caller_repo,
         "--caller-root", str(tmp / "caller-workspace"),
         "--central-root", str(tmp / "central-workspace"),
+        *(extra_args or []),
     ])
 
 
@@ -114,3 +115,19 @@ def test_new_stack_registers_lock_and_pushes(tmp_path, capsys, monkeypatch):
     assert written["allowed_repos"] == ["acme/orders"]
     assert written["stack_name"] == "orders"
     assert [c[1] for c in fake.commands("git")] == ["config", "config", "add", "commit", "pull", "push"]
+
+
+def test_new_stack_honors_the_registry_remote_flag(tmp_path, capsys, monkeypatch):
+    """`--registry-remote` is the only way a production caller can override
+    `persist_lock`'s `remote`; assert it actually reaches the git pull/push
+    invocations rather than being accepted and silently dropped."""
+    setup_workspace(tmp_path)  # no lock file -> first use
+    fake = FakeRunner()
+    monkeypatch.setattr("cloudapp.runner.run", fake)
+    rc = invoke(
+        tmp_path, "dev", "cloud-app.yml", "orders", "acme/orders",
+        extra_args=["--registry-remote", "upstream"],
+    )
+    assert rc == 0
+    assert ["git", "pull", "--rebase", "--autostash", "upstream", "main"] in fake.calls
+    assert ["git", "push", "upstream", "HEAD:main"] in fake.calls

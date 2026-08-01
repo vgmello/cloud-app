@@ -182,6 +182,7 @@ def test_persist_lock_defaults_to_the_github_actions_bot():
     runner = FakeRunner()
     registry.persist_lock(runner, "central-workspace", "prod", "orders", "acme/orders")
     assert ["git", "config", "user.name", "github-actions[bot]"] in runner.calls
+    assert ["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"] in runner.calls
     assert ["git", "push", "origin", "HEAD:main"] in runner.calls
 
 

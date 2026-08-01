@@ -26,7 +26,7 @@ def test_sync_no_secrets_short_circuits():
     assert run.calls == []
 
 
-def test_sync_missing_gha_secret_fails_with_names():
+def test_sync_missing_secret_fails_with_names():
     with pytest.raises(secrets.SyncError, match="missing environment secrets: STRIPE_KEY"):
         secrets.sync(tool("full"), "kv-x", {}, FakeRunner())
 

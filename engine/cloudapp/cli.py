@@ -293,7 +293,8 @@ def cmd_validate_lock(args):
     registry_path.write_text(yaml.safe_dump(lock, default_flow_style=False))
     registry.persist_lock(
         runner.run, args.central_root, args.environment, args.stack_name, args.caller_repo,
-        bot_name=args.bot_name, bot_email=args.bot_email, branch=args.registry_branch,
+        bot_name=args.bot_name, bot_email=args.bot_email,
+        remote=args.registry_remote, branch=args.registry_branch,
     )
     ci.notice(f"Stack lock created successfully at '{registry_path}'.")
 
@@ -418,10 +419,24 @@ def main(argv=None):
     p.add_argument("--central-root", default="central-workspace")
     p.add_argument("--bot-name", default="github-actions[bot]")
     p.add_argument("--bot-email", default="github-actions[bot]@users.noreply.github.com")
+    p.add_argument("--registry-remote", default="origin")
     p.add_argument("--registry-branch", default="main")
     p.set_defaults(func=cmd_validate_lock)
 
     args = parser.parse_args(argv)
+
+    # Resolve and pin the CI provider eagerly, outside every handler and
+    # outside the except block below. ci.error() is itself a CI call, so if
+    # detection were left to first use inside the except handler, a bad
+    # CLOUDAPP_CI would raise from within the handler for the *original*
+    # error, destroying that diagnostic and leaving main() to raise instead
+    # of returning a clean exit code.
+    try:
+        ci.use(ci.detect())
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
     try:
         args.func(args)
     except (manifest.ManifestError, resolve.ResolveError, secrets.SyncError,
