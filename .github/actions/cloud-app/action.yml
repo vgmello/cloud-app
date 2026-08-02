@@ -127,6 +127,15 @@ runs:
         echo "manifest_changed=$changed" >> "$GITHUB_OUTPUT"
         echo "cloud-app: manifest_changed=$changed ($reason)"
 
+    # Pin the interpreter rather than inheriting whatever the caller's runner
+    # happens to ship. Without this, `python3` resolves to the system Python on
+    # a container/self-hosted runner (where pip installs can hit PEP 668
+    # externally-managed errors) and does not exist at all on Windows images.
+    # Also guarantees the `python3` name every step below uses.
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.12"
+
     - name: Install engine deps
       shell: bash
       run: pip install -q -r "${{ github.action_path }}/../../../engine/requirements.txt"
@@ -217,7 +226,7 @@ runs:
         INPUT_BRANCH: ${{ github.ref_name }}
         INPUT_ENV: ${{ inputs.env }}
         INPUT_PLAN_ONLY: ${{ inputs.plan_only }}
-      run: python "${{ github.action_path }}/../../scripts/dispatch_and_wait.py"
+      run: python3 "${{ github.action_path }}/../../scripts/dispatch_and_wait.py"
 
     # One source of truth for the ids: the dispatch when it ran, the cache
     # otherwise. Everything downstream reads this step, never either branch.

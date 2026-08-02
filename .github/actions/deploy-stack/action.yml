@@ -52,6 +52,15 @@ runs:
         # of the job.
         persist-credentials: false
 
+    # Pin the interpreter rather than inheriting whatever the caller's runner
+    # happens to ship. Without this, `python3` resolves to the system Python on
+    # a container/self-hosted runner (where the --user install below can hit a
+    # PEP 668 externally-managed error) and does not exist at all on Windows
+    # images. Also guarantees the `python3` name every step below uses.
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.12"
+
     - name: Install cloudapp dependencies
       shell: bash
       run: python3 -m pip install --user -q -r central-workspace/engine/requirements.txt

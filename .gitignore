@@ -23,3 +23,7 @@ terraform/azure/custom/*
 
 # Brainstorming visual companion sessions
 .superpowers/
+
+# Per-machine hook state: absolute paths, session ids, edit counts. Regenerates
+# on demand. .impeccable/config.json next to it IS shared and stays tracked.
+.impeccable/hook.cache.json
