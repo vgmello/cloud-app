@@ -27,12 +27,31 @@
       "required": [
         "static_sites"
       ]
+    },
+    {
+      "required": [
+        "database"
+      ]
+    },
+    {
+      "required": [
+        "databases"
+      ]
+    },
+    {
+      "required": [
+        "storage"
+      ]
     }
   ],
   "properties": {
     "name": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{1,29}$"
+    },
+    "component": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,29}$"
     },
     "app": {
       "$ref": "#/$defs/app"
@@ -345,6 +364,26 @@
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]{0,29}$"
           }
+        },
+        "external": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "properties": {
+          "external": {
+            "const": true
+          }
+        },
+        "required": [
+          "external"
+        ]
+      },
+      "then": {
+        "properties": {
+          "size": false,
+          "storage_gb": false,
+          "public_access": false
         }
       }
     },
@@ -368,6 +407,25 @@
         },
         "public_access": {
           "type": "boolean"
+        },
+        "external": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "properties": {
+          "external": {
+            "const": true
+          }
+        },
+        "required": [
+          "external"
+        ]
+      },
+      "then": {
+        "properties": {
+          "containers": false,
+          "public_access": false
         }
       }
     },

@@ -258,3 +258,68 @@ def test_sync_no_manifest_secrets_reports_unchanged():
     assert out["vault-exists"] == "true"
     assert out["secrets-changed"] == "false"
     assert _sets(run.calls) == []
+
+
+# --- shared stacks: the sentinel is per component, not per stack ---------------
+
+_COMPONENT_TOOL = {**_TOOL, "name": "shop", "component": "api"}
+
+
+def test_sentinel_label_is_the_stack_name_for_an_unsplit_stack():
+    assert secrets.sentinel_label(_TOOL) == "orders-api"
+
+
+def test_sentinel_label_includes_the_component():
+    assert secrets.sentinel_label(_COMPONENT_TOOL) == "shop-api"
+    assert secrets.sentinel_kv_name(secrets.sentinel_label(_COMPONENT_TOOL)) == (
+        "shop-api-secrets-sentinel"
+    )
+
+
+def test_components_sharing_a_vault_do_not_share_a_sentinel():
+    """Two components write to one Key Vault. A stack-wide sentinel would let
+    one component's hash satisfy the other's check and silently skip its
+    writes."""
+    other = {**_COMPONENT_TOOL, "component": "worker"}
+    assert secrets.sentinel_kv_name(secrets.sentinel_label(_COMPONENT_TOOL)) != (
+        secrets.sentinel_kv_name(secrets.sentinel_label(other))
+    )
+
+
+def test_component_sync_writes_its_own_sentinel():
+    run = _vault_run(None)
+    secrets.sync(_COMPONENT_TOOL, "kv-shop-dev", _ALL, run, fetch_ip=lambda: "", sleep=lambda _: None)
+    written = [c[c.index("--name") + 1] for c in _sets(run.calls)]
+    assert "shop-api-secrets-sentinel" in written
+
+
+def test_component_sync_is_not_skipped_by_another_components_sentinel():
+    stale = secrets.sentinel_hash("shop-worker", secrets.collect(_COMPONENT_TOOL), _ALL)
+    run = _vault_run(stale)
+    out = secrets.sync(
+        _COMPONENT_TOOL, "kv-shop-dev", _ALL, run, fetch_ip=lambda: "", sleep=lambda _: None
+    )
+    assert out["secrets-changed"] == "true"
+
+
+def test_component_fails_loudly_when_the_stack_vault_is_missing():
+    """A named component never creates the vault, so a missing one is not a
+    first-deploy state that a later step resolves — it means the root component
+    was never deployed."""
+    def run(cmd, check=False, capture=False):
+        if cmd[:3] == ["az", "keyvault", "show"]:
+            return FakeResult(1, "", "ResourceNotFound")
+        return FakeResult()
+
+    with pytest.raises(secrets.SyncError, match="root manifest"):
+        secrets.sync(_COMPONENT_TOOL, "kv-shop-dev", _ALL, run, fetch_ip=lambda: "")
+
+
+def test_unsplit_stack_still_defers_a_missing_vault():
+    def run(cmd, check=False, capture=False):
+        if cmd[:3] == ["az", "keyvault", "show"]:
+            return FakeResult(1, "", "ResourceNotFound")
+        return FakeResult()
+
+    out = secrets.sync(_TOOL, "kv-orders-api-dev", _ALL, run, fetch_ip=lambda: "")
+    assert out["vault-exists"] == "false"

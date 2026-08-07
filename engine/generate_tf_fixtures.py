@@ -21,6 +21,9 @@ CASES = [
     ("partial", "dev"),
     ("databases", "dev"),
     ("codefn", "dev"),
+    ("sharedroot", "dev"),
+    ("sharedapi", "dev"),
+    ("sharedlegacy", "dev"),
 ]
 
 

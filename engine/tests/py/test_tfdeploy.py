@@ -105,3 +105,23 @@ def test_bootstrap_deploy_omits_image_tags_and_runner_ip():
     assert "image_tags=" not in joined
     assert "runner_ip=" not in joined
     assert "-var-file=" in joined
+
+
+def test_prepare_derives_the_state_key_from_the_manifest_component():
+    """The component comes from the tool config, so the state key can never
+    describe a different manifest than the tfvars do."""
+    component_tool = {**tool(), "component": "api"}
+    lines, _, _ = tfdeploy.prepare(
+        ENVDIR / "dev.yml", component_tool, "orders-api", "dev",
+        "{}", plan_only=True, fetch_ip=lambda: None,
+    )
+    assert "key=orders-api/components/api/dev.tfstate" in lines
+    assert "container_name=orders-api-dev" in lines
+
+
+def test_prepare_keeps_the_stack_state_key_without_a_component():
+    lines, _, _ = tfdeploy.prepare(
+        ENVDIR / "dev.yml", tool(), "orders-api", "dev",
+        "{}", plan_only=True, fetch_ip=lambda: None,
+    )
+    assert "key=orders-api/dev.tfstate" in lines

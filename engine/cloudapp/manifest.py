@@ -102,6 +102,50 @@ def _normalize_app(app):
     return normalized
 
 
+def _normalize_db(defaults, entry):
+    """Merge database defaults and pin the ownership flag.
+
+    An external entry keeps only what the wiring needs (`dbs`, and `name`/`type`
+    if given); sizing defaults are still merged in but never reach Terraform,
+    which skips the module for external servers entirely.
+    """
+    merged = deep_merge(defaults, entry)
+    merged.setdefault("dbs", ["main"])
+    merged.setdefault("external", False)
+    return merged
+
+
+def is_external(entry):
+    """True when the entry is consumed but not managed by this component.
+
+    An external entry stays in the config — the Key Vault secret names apps are
+    wired to are derived from the declaration, not from the resource — but the
+    root module creates nothing for it. That is what lets one component own a
+    database and another only reference it, without either apply destroying the
+    other's resources.
+    """
+    return bool((entry or {}).get("external"))
+
+
+def validate_component(cfg):
+    """Raise if a component's ownership claims are self-contradictory.
+
+    A component that manages nothing at all is a deploy that can only destroy:
+    it would hold a state file with no resources in it while every reference it
+    declares points at another component's. Catch it in the manifest rather than
+    at apply time.
+    """
+    manages_compute = any(cfg.get(section) for section in ("apps", "functions", "static_sites"))
+    manages_db = any(not is_external(v) for v in (cfg.get("databases") or {}).values())
+    manages_storage = cfg.get("storage") is not None and not is_external(cfg["storage"])
+    if not (manages_compute or manages_db or manages_storage or cfg.get("terraform")):
+        raise ManifestError(
+            "manifest declares no resources of its own — every database/storage entry is "
+            "marked external and no compute or custom terraform is declared. A component "
+            "must own at least one resource."
+        )
+
+
 def validate_db_refs(cfg):
     """Raise if any app/function databases ref names an undeclared server or db."""
     declared = {k: set(v["dbs"]) for k, v in cfg.get("databases", {}).items()}
@@ -139,22 +183,20 @@ def normalize(merged):
         )
     db_defaults = _load_yaml(DEFAULTS_DIR / "database.yml")
     if "database" in cfg:
-        merged_db = deep_merge(db_defaults, cfg.pop("database"))
-        merged_db.setdefault("dbs", ["main"])
+        merged_db = _normalize_db(db_defaults, cfg.pop("database"))
         cfg["databases"] = {"main": merged_db}
         cfg["database_legacy"] = True
     elif "databases" in cfg:
-        entries = {}
-        for k, v in cfg["databases"].items():
-            merged = deep_merge(db_defaults, v)
-            merged.setdefault("dbs", ["main"])
-            entries[k] = merged
-        cfg["databases"] = entries
+        cfg["databases"] = {
+            k: _normalize_db(db_defaults, v) for k, v in cfg["databases"].items()
+        }
     if "storage" in cfg:
         cfg["storage"] = deep_merge(_load_yaml(DEFAULTS_DIR / "storage.yml"), cfg["storage"])
+        cfg["storage"].setdefault("external", False)
     if "terraform" in cfg:
         cfg["terraform"] = normalize_terraform(cfg["terraform"])
     validate_db_refs(cfg)
+    validate_component(cfg)
     return cfg
 
 
@@ -175,6 +217,9 @@ def parse(manifest_path, app_root="."):
     """Validate and expand a manifest into per-environment normalized configs.
 
     Returns (name, environments, tools, docker) where tools maps env -> config.
+    ``name`` is the stack name; an optional top-level ``component`` (not
+    overlayable per environment, by schema) names this repo's slice of a stack
+    shared with other repos and rides along inside each per-env config.
     """
     manifest = _load_yaml_12(Path(manifest_path).read_text())
     errors = validate(manifest)

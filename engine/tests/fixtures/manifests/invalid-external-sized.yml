@@ -1,0 +1,9 @@
+name: shop
+component: api
+app:
+  port: 8080
+databases:
+  primary:
+    external: true
+    size: large
+    dbs: [orders]

@@ -64,7 +64,8 @@
         "dbs": [
           "orders",
           "billing"
-        ]
+        ],
+        "external": false
       },
       "reporting": {
         "type": "sqlserver",
@@ -73,7 +74,8 @@
         "public_access": false,
         "dbs": [
           "main"
-        ]
+        ],
+        "external": false
       }
     },
     "environment": "dev",

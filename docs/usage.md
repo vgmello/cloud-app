@@ -61,6 +61,94 @@ Create a GitHub environment per manifest env key (`dev`, `prod`, ...). Put
 required reviewers on `prod` — that is the approval gate. Add any manifest
 `secrets:` names as environment secrets.
 
+## Splitting a stack across repos (components)
+
+A **stack** is one `name:` in one environment: one resource group, one Key
+Vault, one Terraform state. When several repos are allow-listed for the same
+stack (see [registries/](../registries/README.md)), they used to have to share
+that single state — so each repo's manifest had to describe the *whole* stack.
+Deploying a database from one repo and an app from another at different times
+could not work: whichever applied second saw the first's resources as absent
+from its config, and the two deploys fought over the same Key Vault and the
+same resource names.
+
+`component:` splits the stack instead of the state's ownership being all-or-
+nothing. Each manifest declares which slice of the stack it owns:
+
+```yaml
+# repo A — cloud-app.yml. The root component: no `component:` key.
+name: shop
+databases:
+  primary:
+    type: postgres
+    dbs: [orders, billing]
+storage:
+  containers: [uploads]
+```
+
+```yaml
+# repo B — cloud-app.yml. A named component of the same stack.
+name: shop
+component: api
+app:
+  port: 8080
+  databases: [primary/orders]
+databases:
+  primary:
+    external: true      # repo A owns this server; only reference it
+    dbs: [orders, billing]
+storage:
+  external: true
+```
+
+What each side gets:
+
+| | Root component (no `component:`) | Named component |
+| --- | --- | --- |
+| Terraform state | `<stack>/<env>.tfstate` | `<stack>/components/<component>/<env>.tfstate` |
+| Resource group | `rg-<stack>-<env>` (shared) | the same one |
+| Key Vault | creates `kv-<stack>-<env>` | reads it |
+| Resource names | `ca-<stack>-<env>` | `ca-<stack>-<component>-<env>` |
+| Image repository | `<stack>/<key>` | `<stack>/<component>/<key>` |
+
+Rules:
+
+- **Exactly one root component per stack.** It creates the Key Vault; every
+  named component reads it. Deploy the root first — a named component whose
+  stack has no vault yet fails with that message rather than a Terraform error.
+- **`external: true`** on a `databases.<server>` entry or on `storage:` means
+  "another component owns this; wire to it but do not manage it". The entry
+  still has to list its `dbs`, because the Key Vault secret names apps are
+  wired to (`database-url-<server>-<db>`) are derived from the declaration, not
+  from the resource. Sizing keys (`size`, `storage_gb`, `public_access`,
+  `containers`) are rejected on an external entry — they would describe a
+  resource this manifest does not own.
+- **An external declaration must match the owner's form.** The singular
+  `database:` form writes one Key Vault secret named `database-url`; the plural
+  `databases:` form writes `database-url-<server>-<db>`. A component cannot see
+  the owning manifest, so nothing validates this for you: declare `database:
+  {external: true}` against an owner using `database:`, and `databases: {<key>:
+  {external: true, dbs: [...]}}` against an owner using `databases:`. A mismatch
+  deploys cleanly and wires the app to a secret that does not exist.
+- **A manifest with no compute is valid** when it declares a database or
+  storage. That is how a repo can own only the stack's shared services.
+- **A component must own something.** A manifest whose every entry is external,
+  with no compute and no `terraform:`, is rejected: its state would be empty
+  and its deploy could only ever destroy.
+- **`component:` is not overlayable per environment.** One manifest is one
+  component in every environment it deploys.
+
+What components do *not* separate: the resource group, the Key Vault, the
+bootstrap (one pair of plan/apply identities serves the whole stack), and the
+state *container* — all components' state blobs live in `<stack>-<env>` and any
+component's identity can read them. Components bound what Terraform believes it
+manages; they are not a security boundary between repos. Repos that should not
+see each other's resources need separate stack names, not separate components.
+
+Secrets are stack-wide too: components share one Key Vault, so two components
+declaring the same `secrets:` name write the same Key Vault secret. Give them
+distinct names if they need distinct values.
+
 ## Multiple databases
 
 The singular `database:` form above still works unchanged — it provisions one
@@ -293,6 +381,9 @@ See [trust-modes.md](trust-modes.md) for the three deploy identities, self vs de
 - One manifest (one platform call) per workflow run: the config artifact
   name is fixed, so invoking the `cloud-app` action twice in a single run is
   not supported.
+- Concurrency: components of one stack keep separate Terraform state, so they
+  can deploy in parallel. The per-repo `concurrency:` group in the sample
+  workflow is already the right granularity.
 - Post-deploy verification: the action checks every container app and
   function app exists and is healthy, and fails the run if not — a
   crash-looping image or an incomplete stack (partial earlier deploy) are the

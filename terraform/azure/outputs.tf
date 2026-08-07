@@ -1,10 +1,15 @@
 output "names" {
-  description = "Every resource name the naming convention produces for this tool+env"
+  description = <<-EOT
+    Every resource name the naming convention produces for this component.
+    resource_group and keyvault are stack-wide (shared by every component);
+    storage and databases are null/absent when another component owns them.
+  EOT
   value = {
+    component      = local.component
     resource_group = local.rg_name
     keyvault       = local.kv_name
-    storage        = local.storage != null ? local.st_name : null
-    databases      = local.db_names
+    storage        = local.manages_storage ? local.st_name : null
+    databases      = { for k in keys(local.managed_databases) : k => local.db_names[k] }
     apps           = local.ca_names
     functions      = local.func_names
     static_sites   = local.swa_names

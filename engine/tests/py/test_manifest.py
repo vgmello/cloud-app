@@ -3,13 +3,13 @@ from conftest import FIXTURES, load_golden, load_manifest
 
 from cloudapp import manifest
 
-VALID = ["minimal", "full", "multi", "partial", "databases"]
+VALID = ["minimal", "full", "multi", "partial", "databases", "sharedroot", "sharedapi", "sharedlegacy"]
 INVALID = [
     "invalid-missing-name",
     "invalid-legacy-type",
     "invalid-unknown-key",
     "invalid-empty-environments",
-    "invalid-no-compute",
+    "invalid-no-resources",
     "invalid-mixed-container",
     "invalid-db-type",
     "invalid-app-and-apps",
@@ -17,6 +17,7 @@ INVALID = [
     "invalid-function-image-docker",
     "invalid-env-number",
     "invalid-database-and-databases",
+    "invalid-external-sized",
 ]
 
 
@@ -41,6 +42,9 @@ def test_invalid_manifests_fail_schema(name):
         ("partial", "prod", "partial.prod"),
         ("databases", "dev", "databases.dev"),
         ("databases", "prod", "databases.prod"),
+        ("sharedroot", "dev", "sharedroot.dev"),
+        ("sharedapi", "dev", "sharedapi.dev"),
+        ("sharedlegacy", "dev", "sharedlegacy.dev"),
     ],
 )
 def test_normalized_tool_matches_golden(name, env, golden):
@@ -288,5 +292,68 @@ def test_normalize_terraform_object_keeps_providers():
 
 
 def test_normalize_without_terraform_leaves_key_absent():
-    cfg = manifest.normalize({"name": "orders"})
+    cfg = manifest.normalize({"name": "orders", "app": {"port": 8080}})
     assert "terraform" not in cfg
+
+
+# --- shared stacks: components ------------------------------------------------
+
+
+def test_component_rides_along_in_every_environment_config():
+    _, _, tools, _ = manifest.parse(FIXTURES / "sharedapi.yml")
+    assert tools["dev"]["component"] == "api"
+
+
+def test_component_absent_when_the_stack_is_not_split():
+    _, _, tools, _ = manifest.parse(FIXTURES / "minimal.yml")
+    assert "component" not in tools["dev"]
+
+
+def test_component_is_not_overlayable_per_environment():
+    m = {
+        "name": "shop",
+        "app": {"port": 8080},
+        "environments": {"prod": {"component": "api"}},
+    }
+    assert manifest.validate(m) != []
+
+
+def test_infra_only_manifest_is_valid():
+    """A component may own the stack's database and no compute at all — that is
+    the half of 'create a db and an app in different repos' that used to be
+    unrepresentable."""
+    assert manifest.validate(load_manifest("sharedroot")) == []
+
+
+def test_external_database_is_declared_but_not_managed():
+    _, _, tools, _ = manifest.parse(FIXTURES / "sharedapi.yml")
+    assert tools["dev"]["databases"]["primary"]["external"] is True
+    assert tools["dev"]["storage"]["external"] is True
+
+
+def test_managed_entries_default_to_not_external():
+    _, _, tools, _ = manifest.parse(FIXTURES / "sharedroot.yml")
+    assert tools["dev"]["databases"]["primary"]["external"] is False
+    assert tools["dev"]["storage"]["external"] is False
+
+
+def test_app_may_reference_a_database_another_component_owns():
+    """The ref resolves against the external declaration, so the wiring works
+    without this component managing (or being able to destroy) the server."""
+    _, _, tools, _ = manifest.parse(FIXTURES / "sharedapi.yml")
+    assert tools["dev"]["apps"]["main"]["databases"] == ["primary/orders"]
+
+
+def test_component_owning_nothing_is_rejected():
+    with pytest.raises(manifest.ManifestError, match="no resources of its own"):
+        manifest.parse(FIXTURES / "invalid-external-only.yml")
+
+
+def test_custom_terraform_alone_counts_as_owning_something():
+    cfg = manifest.normalize({
+        "name": "shop",
+        "component": "extras",
+        "terraform": "./terraform",
+        "databases": {"primary": {"external": True, "dbs": ["orders"]}},
+    })
+    assert cfg["component"] == "extras"

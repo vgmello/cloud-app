@@ -71,6 +71,12 @@ outputs:
   name:
     description: Resolved stack name (manifest name)
     value: ${{ steps.parse.outputs.name }}
+  component:
+    description: >-
+      This manifest's component of the stack (manifest `component:`), empty when
+      the stack is not split across manifests. Components share one resource
+      group and Key Vault but keep separate Terraform state.
+    value: ${{ steps.parse.outputs.component }}
   code_functions:
     description: Whether any environment declares a code (runtime) function
     value: ${{ steps.parse.outputs.code_functions }}
@@ -352,6 +358,7 @@ runs:
         --platform-file "${{ steps.platform.outputs.file }}"
         --tool-name "$STACK"
         --environment "$DEPLOY_ENV"
+        --component "${{ steps.parse.outputs.component }}"
 
     # Stage caller-supplied Terraform into the platform's custom child module.
     # No-op when the manifest has no `terraform:` field. Runs before any
@@ -394,8 +401,11 @@ runs:
         --tool-json ".cloud-app/tool.$DEPLOY_ENV.json"
         --keyvault-name "${{ steps.platform.outputs.keyvault }}"
 
+    # Only the root component creates the Key Vault; a named component reads it,
+    # so there is nothing here for it to pre-apply — a missing vault means the
+    # root component has not been deployed yet, and the sync below says so.
     - name: First-deploy targeted apply (key vault before secrets)
-      if: ${{ inputs.plan_only == 'false' && steps.secrets.outputs.vault-exists == 'false' }}
+      if: ${{ inputs.plan_only == 'false' && steps.secrets.outputs.vault-exists == 'false' && steps.parse.outputs.component == '' }}
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}
@@ -417,7 +427,7 @@ runs:
         --stack main
 
     - name: Sync secrets after vault creation
-      if: ${{ inputs.plan_only == 'false' && steps.secrets.outputs.vault-exists == 'false' }}
+      if: ${{ inputs.plan_only == 'false' && steps.secrets.outputs.vault-exists == 'false' && steps.parse.outputs.component == '' }}
       shell: bash
       env:
         DEPLOY_ENV: ${{ inputs.env }}

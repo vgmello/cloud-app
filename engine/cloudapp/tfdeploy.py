@@ -35,8 +35,12 @@ def _is_transient_authz(text):
 
 def prepare(platform_path, tool, tool_name, env, image_tags_json, plan_only,
             stack="main", fetch_ip=runner.fetch_runner_ip):
-    """Resolve backend config lines, image tags, and runner IP for a deploy."""
-    backend_lines = backend.render(platform_path, tool_name, env, stack=stack)
+    """Resolve backend config lines, image tags, and runner IP for a deploy.
+
+    The component (when the manifest declares one) comes from the tool config,
+    so the state key always matches the manifest that produced the tfvars."""
+    component = tool.get("component")
+    backend_lines = backend.render(platform_path, tool_name, env, stack=stack, component=component)
     tags = json.loads(image_tags_json or "{}")
     platform = load_yaml(Path(platform_path).read_text()) or {}
     if plan_only and not tags:

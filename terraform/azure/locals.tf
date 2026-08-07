@@ -3,7 +3,21 @@ locals {
   platform = local.cfg.platform
   env      = local.cfg.environment
   prefix   = try(local.platform.naming_prefix, "")
-  base     = "${local.prefix}${local.cfg.name}"
+
+  # A stack may be split across several manifests ("components"), each with its
+  # own Terraform state but all sharing one resource group and one Key Vault.
+  # stack_base names what the stack shares; base names what this component owns,
+  # so two components can never derive the same resource name. Mirrors
+  # engine/cloudapp/naming.py.
+  component  = try(local.cfg.component, "")
+  stack_base = "${local.prefix}${local.cfg.name}"
+  base       = local.component == "" ? local.stack_base : "${local.stack_base}-${local.component}"
+
+  # The Key Vault is stack-wide, so exactly one component creates it: the
+  # unnamed (root) one. Every other component reads it, which is also how a
+  # component's apps get at secrets — including database URLs written by
+  # whichever component owns the database.
+  owns_keyvault = local.component == ""
 
   apps         = try(local.cfg.apps, {})
   functions    = try(local.cfg.functions, {})
@@ -11,6 +25,13 @@ locals {
   databases    = try(local.cfg.databases, {})
   db_legacy    = try(local.cfg.database_legacy, false)
   storage      = try(local.cfg.storage, null)
+
+  # Entries another component owns. They stay in `databases`/`storage` because
+  # the secret-name wiring below is derived from the declaration, not from the
+  # resource — but nothing here creates them, so this component's state never
+  # claims them and its applies never plan to destroy them.
+  managed_databases = { for k, v in local.databases : k => v if !try(v.external, false) }
+  manages_storage   = local.storage != null && !try(local.storage.external, false)
 
   # entry base name: explicit name > manifest name (single entry) > manifest name + key
   app_bases = {
@@ -30,8 +51,11 @@ locals {
   func_names = { for k, b in local.function_bases : k => "func-${b}-${local.env}" }
   swa_names  = { for k, b in local.static_site_bases : k => "swa-${b}-${local.env}" }
 
-  rg_name = "rg-${local.base}-${local.env}"
-  kv_name = trimsuffix(substr("kv-${local.base}-${local.env}", 0, 24), "-")
+  # Stack-scoped: the bootstrap creates the resource group from the stack name,
+  # and every component shares it and the Key Vault inside it.
+  rg_name = "rg-${local.stack_base}-${local.env}"
+  kv_name = trimsuffix(substr("kv-${local.stack_base}-${local.env}", 0, 24), "-")
+
   st_name = substr("st${replace("${local.base}${local.env}", "-", "")}", 0, 24)
 
   db_server_bases = {
@@ -49,6 +73,10 @@ locals {
       db => local.db_legacy ? "database-url" : "database-url-${sk}-${db}"
     }
   }
+
+  # Whichever of the two the component holds; the other is an empty list.
+  keyvault_id        = local.owns_keyvault ? one(module.keyvault[*].id) : one(data.azurerm_key_vault.shared[*].id)
+  keyvault_vault_uri = local.owns_keyvault ? one(module.keyvault[*].vault_uri) : one(data.azurerm_key_vault.shared[*].vault_uri)
 
   acr_name = split(".", local.platform.acr.login_server)[0]
   acr_id   = "/subscriptions/${local.platform.subscription_id}/resourceGroups/${local.platform.acr.resource_group}/providers/Microsoft.ContainerRegistry/registries/${local.acr_name}"

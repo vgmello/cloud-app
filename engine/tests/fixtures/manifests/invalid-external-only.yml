@@ -1,0 +1,6 @@
+name: shop
+component: ghost
+databases:
+  primary:
+    external: true
+    dbs: [orders]

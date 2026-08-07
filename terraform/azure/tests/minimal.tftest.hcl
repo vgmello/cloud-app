@@ -31,7 +31,7 @@ run "keyvault" {
   command = plan
 
   assert {
-    condition     = module.keyvault.name == "kv-orders-api-dev"
+    condition     = one(module.keyvault[*].name) == "kv-orders-api-dev"
     error_message = "key vault module must use the computed kv name"
   }
 }

@@ -1,0 +1,23 @@
+{
+  "name": "shop",
+  "databases": {
+    "primary": {
+      "type": "postgres",
+      "size": "small",
+      "storage_gb": 32,
+      "public_access": false,
+      "dbs": [
+        "orders",
+        "billing"
+      ],
+      "external": false
+    }
+  },
+  "storage": {
+    "containers": [
+      "uploads"
+    ],
+    "public_access": false,
+    "external": false
+  }
+}

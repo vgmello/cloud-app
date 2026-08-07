@@ -52,6 +52,36 @@ the manifest exists and is healthy, and fails the run if not. Two common causes:
 
 Set `verify_deploy: false` on the action to skip the check.
 
+## Sharing this stack with another repo
+
+`orders-api` here is a whole stack: this repo owns its database, its Key Vault,
+and its app. If a second repo needs to deploy into the *same* stack — say it
+owns a worker that talks to this database — adding it to `allowed_repos` is only
+half of it. Both manifests would otherwise share one Terraform state and each
+apply would plan to destroy the other's resources.
+
+The second repo declares a component instead:
+
+```yaml
+name: orders-api        # same stack
+component: worker       # its own Terraform state inside that stack
+apps:
+  worker:
+    ingress: none
+database:               # singular, matching this repo's form — see below
+  external: true        # this repo owns the server; only reference it
+```
+
+It gets `ca-orders-api-worker-<env>` and its own state key, reads the Key Vault
+this repo created, and never touches the database server. Note the `database:`
+form matches: this manifest uses the singular form, whose Key Vault secret is
+`database-url`, so the external declaration must be singular too — the plural
+`databases:` form names its secrets `database-url-<server>-<db>` and would wire
+the worker to a secret nobody writes. This manifest stays
+the stack's root component and needs no change. Full rules — including that
+components are an ownership boundary, not a trust boundary — are in
+[docs/usage.md](../../docs/usage.md#splitting-a-stack-across-repos-components).
+
 ## To use in your own app repo
 
 - Copy both files to your repo root / `.github/workflows/`.

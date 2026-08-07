@@ -7,6 +7,7 @@ data "azurerm_resource_group" "this" {
 
 module "keyvault" {
   source = "./modules/shared/keyvault"
+  count  = local.owns_keyvault ? 1 : 0
 
   name                        = local.kv_name
   location                    = local.platform.location
@@ -18,9 +19,31 @@ module "keyvault" {
   private_dns_zone_id         = local.platform.network.private_dns_zone_ids.keyvault
 }
 
+# The Key Vault used to be unconditional. Gating it on count renames the module
+# instance, so move existing state instead of destroying and recreating a vault
+# full of live secrets. No-op for fresh deploys.
+moved {
+  from = module.keyvault
+  to   = module.keyvault[0]
+}
+
+# A named component does not create the stack's Key Vault — it reads the one the
+# root component created. This fails if the root component has never been
+# deployed, which is the correct order: the stack's shared services first.
+data "azurerm_key_vault" "shared" {
+  count = local.owns_keyvault ? 0 : 1
+
+  name                = local.kv_name
+  resource_group_name = data.azurerm_resource_group.this.name
+}
+
+# Only the databases this component owns. Entries marked `external: true` belong
+# to another component of the same stack: they still shape the Key Vault secret
+# names apps are wired to (locals.db_secret_names), but nothing is created for
+# them here and this component's state never claims them.
 module "database" {
   source   = "./modules/shared/database"
-  for_each = local.databases
+  for_each = local.managed_databases
 
   name                        = local.db_names[each.key]
   type                        = each.value.type
@@ -30,7 +53,7 @@ module "database" {
   dbs                         = local.db_secret_names[each.key]
   location                    = local.platform.location
   resource_group_name         = data.azurerm_resource_group.this.name
-  keyvault_id                 = module.keyvault.id
+  keyvault_id                 = local.keyvault_id
   private_endpoints_subnet_id = local.platform.network.subnets.private_endpoints
   private_dns_zone_id         = each.value.type == "postgres" ? local.platform.network.private_dns_zone_ids.postgres : local.platform.network.private_dns_zone_ids.sqlserver
 }
@@ -46,7 +69,7 @@ moved {
 
 module "storage" {
   source = "./modules/shared/storage"
-  count  = local.storage != null ? 1 : 0
+  count  = local.manages_storage ? 1 : 0
 
   name                        = local.st_name
   location                    = local.platform.location
@@ -54,7 +77,7 @@ module "storage" {
   containers                  = try(local.storage.containers, [])
   public_access               = local.storage.public_access
   runner_ip                   = var.runner_ip
-  keyvault_id                 = module.keyvault.id
+  keyvault_id                 = local.keyvault_id
   private_endpoints_subnet_id = local.platform.network.subnets.private_endpoints
   private_dns_zone_id         = local.platform.network.private_dns_zone_ids.blob
 }
@@ -71,8 +94,8 @@ module "container_app" {
   image_tags                    = { for k, v in var.image_tags : split("/", k)[1] => v if length(split("/", k)) == 2 && split("/", k)[0] == each.key }
   acr_login_server              = local.platform.acr.login_server
   acr_id                        = local.acr_id
-  keyvault_id                   = module.keyvault.id
-  keyvault_vault_uri            = module.keyvault.vault_uri
+  keyvault_id                   = local.keyvault_id
+  keyvault_vault_uri            = local.keyvault_vault_uri
   extra_secret_env              = merge(local.storage_secret_env, local.per_app_db_env[each.key])
 
   depends_on = [module.database, module.storage]
@@ -88,8 +111,8 @@ module "function" {
   function            = each.value
   image_tag           = try(var.image_tags[each.key], null)
   acr_id              = local.acr_id
-  keyvault_id         = module.keyvault.id
-  keyvault_vault_uri  = module.keyvault.vault_uri
+  keyvault_id         = local.keyvault_id
+  keyvault_vault_uri  = local.keyvault_vault_uri
   extra_secret_env    = merge(local.storage_secret_env, local.per_function_db_env[each.key])
   functions_subnet_id = local.platform.network.subnets.functions
 
@@ -119,8 +142,8 @@ module "custom" {
   tool_name                       = local.base
   vnet_id                         = local.platform.network.vnet_id
   subnets                         = local.platform.network.subnets
-  key_vault_id                    = module.keyvault.id
-  key_vault_uri                   = module.keyvault.vault_uri
+  key_vault_id                    = local.keyvault_id
+  key_vault_uri                   = local.keyvault_vault_uri
   app_identity_principal_ids      = { for k, m in module.container_app : k => m.identity_principal_id }
   function_identity_principal_ids = { for k, m in module.function : k => m.identity_principal_id }
 }

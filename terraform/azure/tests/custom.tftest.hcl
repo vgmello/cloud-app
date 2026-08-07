@@ -61,7 +61,7 @@ run "custom_module_receives_keyvault_context" {
   command = plan
 
   override_resource {
-    target = module.keyvault.azurerm_key_vault.this
+    target = module.keyvault[0].azurerm_key_vault.this
     values = {
       id        = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-partial-dev/providers/Microsoft.KeyVault/vaults/kv-sentinel"
       vault_uri = "https://kv-sentinel.vault.azure.net/"

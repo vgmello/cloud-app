@@ -92,6 +92,11 @@ def cmd_parse_manifest(args):
     gha.write_outputs(
         {
             "name": name,
+            # Empty for a stack no manifest splits into components; the deploy
+            # steps pass it straight through, so an empty value keeps the
+            # historical single-state layout untouched. The schema forbids
+            # `component` in an environment overlay, so every env agrees.
+            "component": next(iter(tools.values())).get("component", ""),
             "environments": json.dumps(environments, separators=(",", ":")),
             "docker": str(docker).lower(),
             "code_functions": str(code_functions).lower(),
@@ -139,7 +144,10 @@ def cmd_sync_secrets(args):
 
 
 def cmd_state_exists(args):
-    exists = backend.state_exists(args.platform_file, args.tool_name, args.environment, runner.run)
+    exists = backend.state_exists(
+        args.platform_file, args.tool_name, args.environment, runner.run,
+        component=args.component or None,
+    )
     gha.write_outputs({"exists": "true" if exists else "false"})
 
 
@@ -179,7 +187,10 @@ def cmd_deploy_functions(args):
     import tempfile
 
     tool = _load_json(args.tool_json)
-    backend_lines = backend.render(args.platform_file, args.tool_name, args.environment, stack="main")
+    backend_lines = backend.render(
+        args.platform_file, args.tool_name, args.environment, stack="main",
+        component=tool.get("component"),
+    )
     with tempfile.TemporaryDirectory(prefix="funcpkg-") as workdir:
         deployed = funcdeploy.deploy(tool, args.terraform_dir, backend_lines, workdir, runner.run)
     gha.write_outputs({"deployed": json.dumps(deployed, separators=(",", ":"))})
@@ -342,6 +353,7 @@ def main(argv=None):
     p.add_argument("--platform-file", required=True)
     p.add_argument("--tool-name", required=True)
     p.add_argument("--environment", required=True)
+    p.add_argument("--component", default="")
     p.set_defaults(func=cmd_state_exists)
 
     p = sub.add_parser("rotate-images")

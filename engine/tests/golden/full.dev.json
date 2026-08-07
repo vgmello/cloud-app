@@ -56,7 +56,8 @@
     "containers": [
       "uploads"
     ],
-    "public_access": false
+    "public_access": false,
+    "external": false
   },
   "databases": {
     "main": {
@@ -66,7 +67,8 @@
       "public_access": false,
       "dbs": [
         "main"
-      ]
+      ],
+      "external": false
     }
   },
   "database_legacy": true

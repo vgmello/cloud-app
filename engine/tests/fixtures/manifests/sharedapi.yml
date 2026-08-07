@@ -1,0 +1,20 @@
+# A named component of the same shared stack: owns one container app, and only
+# references the database and storage the root component owns.
+name: shop
+component: api
+
+app:
+  port: 8080
+  ingress: internal
+  databases: [primary/orders]
+
+databases:
+  primary:
+    external: true
+    dbs: [orders, billing]
+
+storage:
+  external: true
+
+environments:
+  dev: {}

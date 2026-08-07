@@ -37,3 +37,34 @@ def test_function_app_name_single_function_uses_base():
 def test_function_app_name_multi_function_suffixes_key():
     tool = {"name": "orders-api", "apps": {}, "functions": {"a": {}, "b": {}}}
     assert naming.function_app_name(tool, "", "dev", "a") == "func-orders-api-a-dev"
+
+
+# --- shared stacks: components ------------------------------------------------
+
+COMPONENT = {"name": "shop", "component": "api", "apps": {"main": {}}, "functions": {}}
+COMPONENT_MULTI = {
+    "name": "shop",
+    "component": "api",
+    "apps": {"public": {}, "admin": {}},
+    "functions": {},
+}
+
+
+def test_component_is_folded_into_the_entry_base():
+    assert naming.container_app_name(COMPONENT, "", "dev", "main") == "ca-shop-api-dev"
+
+
+def test_component_names_never_collide_with_the_root_components():
+    root = {"name": "shop", "apps": {"main": {}}, "functions": {}}
+    assert naming.container_app_name(root, "", "dev", "main") != naming.container_app_name(
+        COMPONENT, "", "dev", "main"
+    )
+
+
+def test_component_keeps_the_multi_entry_key_suffix():
+    assert naming.container_app_name(COMPONENT_MULTI, "", "dev", "admin") == "ca-shop-api-admin-dev"
+
+
+def test_component_applies_to_function_names_too():
+    tool = {"name": "shop", "component": "jobs", "apps": {}, "functions": {"sync": {}}}
+    assert naming.function_app_name(tool, "", "dev", "sync") == "func-shop-jobs-dev"

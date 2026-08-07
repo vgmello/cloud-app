@@ -16,7 +16,8 @@
     "containers": [
       "logs"
     ],
-    "public_access": false
+    "public_access": false,
+    "external": false
   },
   "apps": {
     "main": {
@@ -48,7 +49,8 @@
       "public_access": false,
       "dbs": [
         "main"
-      ]
+      ],
+      "external": false
     }
   },
   "database_legacy": true

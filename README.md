@@ -71,7 +71,8 @@ The trust & identity model — the split topology (control bootstraps, caller de
 
 ## Manifest at a glance
 
-- `name` + at least one compute section (`app`/`apps`, `functions`, `static_sites`).
+- `name` + at least one resource: a compute section (`app`/`apps`, `functions`,
+  `static_sites`), a database, or storage.
 - A `functions:` entry deploys a container by default. Add `runtime:`
   (`dotnet-isolated:8.0`, `node:20`, `python:3.11`, `java:17`, `powershell:7.4`, …)
   to deploy application code instead: supply `package:` (a directory zipped as-is)
@@ -89,6 +90,11 @@ The trust & identity model — the split topology (control bootstraps, caller de
 - Everything is private by default; opt out with `public_access: true` or
   `ingress: public`.
 - Per-environment overrides live under `environments.<env>` and deep-merge.
+- Several repos can share one stack: add `component: <name>` and each manifest
+  gets its own Terraform state inside the stack, so one repo can own the
+  database and another the app and they can deploy at different times. Entries
+  another component owns are declared `external: true` and referenced, never
+  managed. See [docs/usage.md](docs/usage.md#splitting-a-stack-across-repos-components).
 - Need a resource the platform doesn't model? Point `terraform: ./terraform` at a
   directory of `*.tf` in your repo. They merge into a `custom` child module that
   receives platform context (resource group, subnets, Key Vault, per-app managed

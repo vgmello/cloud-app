@@ -1,0 +1,12 @@
+# A component referencing a database owned by a component that uses the singular
+# `database:` form. The form has to match: singular writes one Key Vault secret
+# named `database-url`, plural writes `database-url-<server>-<db>`.
+name: orders-api
+component: worker
+
+apps:
+  worker:
+    ingress: none
+
+database:
+  external: true

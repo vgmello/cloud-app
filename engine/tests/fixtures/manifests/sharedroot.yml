@@ -1,0 +1,20 @@
+# Root component of a shared stack: owns the stack's shared services (Key Vault,
+# database, storage) and no compute. Other repos deploy their own components
+# against the same stack name.
+name: shop
+
+databases:
+  primary:
+    type: postgres
+    size: small
+    dbs: [orders, billing]
+
+storage:
+  containers: [uploads]
+
+environments:
+  dev: {}
+  prod:
+    databases:
+      primary:
+        size: medium

@@ -29,32 +29,56 @@ def collect(tool):
 _SENTINEL_NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 
-def sentinel_kv_name(stack_name):
+def sentinel_label(tool):
+    """Identity the sentinel is scoped to: the stack, or the component within it.
+
+    Components of one stack share a Key Vault but declare different secret sets.
+    A stack-wide sentinel would make one component's sync see the other's hash,
+    match on it, and skip writing its own secrets — so the sentinel is per
+    component. Unsplit stacks keep the original stack-name label, and therefore
+    the original sentinel secret."""
+    component = (tool or {}).get("component")
+    return f"{tool['name']}-{component}" if component else tool["name"]
+
+
+def sentinel_kv_name(label):
     """Reserved Key Vault secret name that stores the secret-set hash."""
-    base = _SENTINEL_NON_ALNUM.sub("-", stack_name.lower()).strip("-")
+    base = _SENTINEL_NON_ALNUM.sub("-", label.lower()).strip("-")
     return f"{base}-secrets-sentinel"
 
 
-def sentinel_hash(stack_name, secrets, all_secrets):
-    """SHA-256 over the stack name and the sorted name\\0value pairs.
+def sentinel_hash(label, secrets, all_secrets):
+    """SHA-256 over the sentinel label and the sorted name\\0value pairs.
 
     Order-independent (sorted by name); changes when any value changes or a
-    name is added/removed. The stack name is folded in for cross-vault
+    name is added/removed. The label (see sentinel_label — the stack name, or
+    stack+component for a split stack) is folded in for cross-vault
     distinctness (not a security control — see the design spec).
     """
-    lines = [stack_name]
+    lines = [label]
     for secret in sorted(secrets, key=lambda s: s["name"]):
         lines.append(f"{secret['name']}\0{all_secrets[secret['name']]}")
     return hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
 
-def _vault_exists(run, vault, require_vault):
+def _vault_exists(run, vault, require_vault, component=None):
     """True if the vault exists, False if not-yet-created (tolerated on first
-    deploy unless require_vault). Raise on any other az failure."""
+    deploy unless require_vault). Raise on any other az failure.
+
+    A named component never creates the vault, so for one a missing vault is not
+    a first-deploy state that a later step will resolve — it means the stack's
+    root manifest has not been deployed. Say so here rather than letting the
+    apply fail later on an opaque data-source lookup."""
     show = run(["az", "keyvault", "show", "--name", vault], check=False, capture=True)
     if show.returncode == 0:
         return True
     if NOT_FOUND.search(show.stderr or ""):
+        if component:
+            raise SyncError(
+                f"key vault {vault} does not exist. Component '{component}' shares the "
+                "stack's Key Vault but does not create it — deploy the stack's root "
+                "manifest (the one with no `component:`) first."
+            )
         if require_vault:
             raise SyncError(f"key vault {vault} still missing after the targeted apply")
         gha.notice(f"key vault {vault} not created yet; deferring secret sync")
@@ -112,7 +136,9 @@ def sync(tool, vault, all_secrets, run, require_vault=False, fetch_ip=_runner.fe
     writes the sentinel last (crash-safe). Never deletes. Tolerates a
     not-yet-created vault (first deploy) unless require_vault; allowlists the
     runner IP first.
-    To force a full re-sync (e.g. after a secret was edited directly in the vault), delete the '<stack>-secrets-sentinel' secret so the next run sees a mismatch.
+    To force a full re-sync (e.g. after a secret was edited directly in the vault), delete the '<stack>[-<component>]-secrets-sentinel' secret so the next run sees a mismatch.
+    The vault itself is stack-wide: components share one secret namespace, so two
+    components declaring the same secret name write the same Key Vault secret.
     """
     secrets = collect(tool)
     outputs = {"secret-count": len(secrets)}
@@ -124,17 +150,18 @@ def sync(tool, vault, all_secrets, run, require_vault=False, fetch_ip=_runner.fe
     if missing:
         raise SyncError("missing GitHub environment secrets: " + ", ".join(missing))
 
-    if not _vault_exists(run, vault, require_vault):
+    if not _vault_exists(run, vault, require_vault, tool.get("component")):
         return {**outputs, "vault-exists": "false", "secrets-changed": "false"}
 
-    sentinel = sentinel_kv_name(tool["name"])
+    label = sentinel_label(tool)
+    sentinel = sentinel_kv_name(label)
     if any(s["kv_name"] == sentinel for s in secrets):
         raise SyncError(f"a manifest secret collides with the reserved sentinel name '{sentinel}'")
 
     # Only now that the vault exists do we need this runner's IP on its firewall.
     _allowlist_runner_ip(run, vault, fetch_ip)
 
-    want = sentinel_hash(tool["name"], secrets, all_secrets)
+    want = sentinel_hash(label, secrets, all_secrets)
     if _read_secret(run, vault, sentinel) == want:
         print("secrets unchanged (sentinel)")
         return {**outputs, "vault-exists": "true", "secrets-changed": "false"}

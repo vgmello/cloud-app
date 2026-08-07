@@ -6,7 +6,12 @@ container app / function app names Terraform created. See test_naming.py.
 
 
 def _base(tool, prefix):
-    return f"{prefix}{tool['name']}"
+    """Entry-name base: the stack name, suffixed with the component when the
+    manifest declares one. Components share a stack (and its resource group and
+    Key Vault) but must never derive the same resource name — mirrors
+    `local.base` in locals.tf."""
+    component = tool.get("component")
+    return f"{prefix}{tool['name']}-{component}" if component else f"{prefix}{tool['name']}"
 
 
 def _entry_base(entries, key, base):

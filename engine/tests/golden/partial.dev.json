@@ -42,7 +42,8 @@
       "public_access": false,
       "dbs": [
         "main"
-      ]
+      ],
+      "external": false
     }
   },
   "database_legacy": true

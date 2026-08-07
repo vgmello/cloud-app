@@ -142,6 +142,22 @@ Set a `concurrency:` group per environment (as the sample workflow does) so
 overlapping deploys to the same stack and environment serialize rather than
 racing Terraform state.
 
+## Several repos on one stack
+
+`allowed_repos` lets more than one repo deploy a stack, but by itself it does
+not say who owns what inside it — every manifest would describe the whole stack
+and share one Terraform state, so each repo's apply would plan to destroy
+whatever the others created. Repos sharing a stack should declare a
+`component:` in their manifest: exactly one root component (no `component:`)
+owning the shared services, and a named component per additional repo, each
+with its own state key under `<stack>/components/<component>/`. See
+[docs/usage.md](../docs/usage.md#splitting-a-stack-across-repos-components).
+
+Components are an ownership boundary for Terraform, not a trust boundary: every
+component of a stack deploys under the same plan/apply identities and shares the
+stack's state container and Key Vault. Repos that must not reach each other's
+resources need separate stack names.
+
 The action dispatches the control repo to bootstrap the stack (creating the
 RG + plan/apply identities federated to this repo), then runs the resource
 deploy under those identities. The stack name is the manifest `name:` — the

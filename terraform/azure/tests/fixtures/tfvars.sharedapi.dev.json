@@ -1,28 +1,35 @@
 {
   "config": {
-    "name": "partial",
-    "functions": {
-      "relay": {
-        "env": {},
-        "secrets": [],
-        "image": "myacr.azurecr.io/relay:2.0"
+    "name": "shop",
+    "component": "api",
+    "databases": {
+      "primary": {
+        "type": "postgres",
+        "size": "small",
+        "storage_gb": 32,
+        "public_access": false,
+        "external": true,
+        "dbs": [
+          "orders",
+          "billing"
+        ]
       }
     },
-    "static_sites": {
-      "docs": {
-        "env": {}
-      }
+    "storage": {
+      "containers": [],
+      "public_access": false,
+      "external": true
     },
     "apps": {
       "main": {
         "ingress": {
           "external": false,
-          "target_port": 5000,
-          "transport": "http2",
+          "target_port": 8080,
+          "transport": "auto",
           "allow_insecure": false
         },
         "replicas": {
-          "min": 2,
+          "min": 1,
           "max": 3
         },
         "containers": {
@@ -32,22 +39,12 @@
             "env": {},
             "secrets": []
           }
-        }
+        },
+        "databases": [
+          "primary/orders"
+        ]
       }
     },
-    "databases": {
-      "main": {
-        "type": "postgres",
-        "size": "large",
-        "storage_gb": 32,
-        "public_access": false,
-        "dbs": [
-          "main"
-        ],
-        "external": false
-      }
-    },
-    "database_legacy": true,
     "environment": "dev",
     "platform": {
       "subscription_id": "00000000-0000-0000-0000-000000000000",
